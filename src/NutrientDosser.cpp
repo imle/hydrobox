@@ -19,10 +19,10 @@ NutrientDosser::NutrientDosser(
     mixers(mixers),
     mixer_count(mixer_count) {}
 
-void NutrientDosser::doseRegimen(unsigned long water_volume_in_ml, int regimen) {
+void NutrientDosser::doseRegimen(double water_volume_in_ml, int regimen) {
   this->mix(MixTimeMS);
 
-  delay(2000); // Let it settle a small amount
+  delay(SettleTimeMS); // Let it settle a small amount
 
   this->dose(water_volume_in_ml, regimen);
 }
@@ -53,16 +53,31 @@ void NutrientDosser::mix(unsigned long ms) {
   delete[] done_mixing;
 }
 
-void NutrientDosser::dose(unsigned long water_volume_in_ml, int regimen) {
-  double dose_time;
+void NutrientDosser::dose(double water_volume_in_ml, int regimen) {
+  double dose_amount, dose_time;
 
-  dose_time = double(water_volume_in_ml) / MilliliterToMilliseconds * this->feed_chart->regimens[regimen].flora_micro;
+  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_micro;
+  dose_time = dose_amount / MilliliterToMilliseconds;
+#ifdef DEBUG_NUTRIENT_DOSSER
+  Serial.println(dose_amount, 8);
+  Serial.println(dose_time, 8);
+#endif
   this->pump_flora_micro->on((unsigned long)(round(dose_time)));
 
-  dose_time = double(water_volume_in_ml) / MilliliterToMilliseconds * this->feed_chart->regimens[regimen].flora_gro;
+  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_gro;
+  dose_time = dose_amount / MilliliterToMilliseconds;
+#ifdef DEBUG_NUTRIENT_DOSSER
+  Serial.println(dose_amount, 8);
+  Serial.println(dose_time, 8);
+#endif
   this->pump_flora_gro->on((unsigned long)(round(dose_time)));
 
-  dose_time = double(water_volume_in_ml) / MilliliterToMilliseconds * this->feed_chart->regimens[regimen].flora_bloom;
+  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_bloom;
+  dose_time = dose_amount / MilliliterToMilliseconds;
+#ifdef DEBUG_NUTRIENT_DOSSER
+  Serial.println(dose_amount, 8);
+  Serial.println(dose_time, 8);
+#endif
   this->pump_flora_bloom->on((unsigned long)(round(dose_time)));
 
   while (this->pump_flora_micro->isOn() || this->pump_flora_gro->isOn() || this->pump_flora_bloom->isOn()) {

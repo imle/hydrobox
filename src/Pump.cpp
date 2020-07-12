@@ -11,11 +11,12 @@ Pump::Pump(pin_size_t pin) : pin(pin), k_address_eeprom(KAddressEEPROMDefault) {
 Pump::Pump(pin_size_t pin, int k_address_eeprom) : pin(pin), k_address_eeprom(k_address_eeprom) {
   pinMode(pin, OUTPUT);
 
-  EEPROM.get(k_address_eeprom, this->k);
+  EEPROM.get(this->k_address_eeprom, this->k);
 }
 
 void Pump::on() {
   this->is_on = true;
+  Serial.println(this->k);
   analogWrite(this->pin, this->k);
 }
 
@@ -83,9 +84,9 @@ void Pump::beginCalibration() {
   this->off();
 }
 
-void Pump::setCalibrationKValue(int k) {
+void Pump::setCalibrationKValue(byte k) {
   this->k = k;
-  EEPROM.put(this->k_address_eeprom, this->k);
+  EEPROM.put(this->k_address_eeprom, (byte)this->k);
 }
 
 void Pump::endCalibration() {

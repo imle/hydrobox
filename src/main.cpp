@@ -1,159 +1,403 @@
 #include <Arduino.h>
+#include <WiFiNINA.h>
 #include <SPI.h>
+
+#include <ArduinoJson.h>
+#include <AccelStepper.h>
+#include <Adafruit_BME280.h>
+#include <MQTT.h>
+#include <StringStream.h>
+#include <senml_pack.h>
+#include <kpn_senml.h>
+
+#include <Interval.h>
 #include <Pump.h>
 #include <Relay.h>
 #include <NutrientDosser.h>
 #include <FeedChart.h>
+#include <EEPROM.h>
+#include <PhysicalStates.h>
+#include "secret/wifi.h"
+#include "secret/mqtt.h"
+#include "constants/mqtt.h"
+#include "constants/sensor_data.h"
 
 
-Pump pump_flora_micro(11, KAddressEEPROMDefault + 8 * 0);    // Pump top
+#define DISABLE_NET
+//#define BUTTON_HOLD_ON
+//#define BUTTON_TOGGLE_ON
+#define BUTTON_TOGGLE_DOSE
+
+char ssid[] = SECRET_SSID;    // your network SSID (name)
+char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
+
+WiFiClient wifiClient;
+uint8_t status = WL_IDLE_STATUS;
+
+Adafruit_BME280 bme; // use I2C interface
+Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
+Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
+Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
+
+Pump pump_flora_micro(11, KAddressEEPROMDefault + 8 * 0);    // Top
 Pump pump_flora_gro(10, KAddressEEPROMDefault + 8 * 1);      //
 Pump pump_flora_bloom(9, KAddressEEPROMDefault + 8 * 2);     //
 Pump pump_ph_up_reservoir(6, KAddressEEPROMDefault + 8 * 3); //
 Pump pump_ph_up_basin(5, KAddressEEPROMDefault + 8 * 4);     //
-Pump pump_ph_down_basin(3, KAddressEEPROMDefault + 8 * 5);   // Pump bottom
+Pump pump_ph_down_basin(3, KAddressEEPROMDefault + 8 * 5);   // Bottom
 
-Relay r0(1, HIGH);
-Relay r1(0, HIGH);
-Relay r2(A0, HIGH);
-Relay r3(A1, HIGH);
-Relay r4(A2, HIGH);
-Relay r5(A3, HIGH);
-Relay r6(A4, HIGH);
-Relay r7(A5, HIGH);
+Relay submersible_pump(1, HIGH); // Left  | Plug BL | Water Pump
+Relay plant_lights(0, HIGH);     //       | Plug TL | Plant Lights
+Relay air_mover(A0, HIGH);       //       | Plug TR | Air Mover
+Relay r3(A1, HIGH);              //       | Plug BR |
+Relay r4(A2, HIGH);              //       |
+Relay r5(A3, HIGH);              //       |
+Relay r6(A4, HIGH);              //       |
+Relay r7(A5, HIGH);              // Right |
 
 Relay fan0(12, LOW);
 Relay fan1(13, LOW);
 
+SenMLPack box(SENML_BASE_NAME_BOX);
+SenMLFloatRecord temperature(KPN_SENML_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
+SenMLFloatRecord pressure(KPN_SENML_PRESSURE, SENML_UNIT_PASCAL);
+SenMLFloatRecord humidity(KPN_SENML_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
+
+SenMLPack state(SENML_BASE_NAME_STATE);
+SenMLBoolRecord sml_pump_flora_micro(F("pump_flora_micro"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_pump_flora_gro(F("pump_flora_gro"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_pump_flora_bloom(F("pump_flora_bloom"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_pump_ph_up_reservoir(F("pump_ph_up_reservoir"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_pump_ph_up_basin(F("pump_ph_up_basin"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_pump_ph_down_basin(F("pump_ph_down_basin"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_submersible_pump(F("submersible_pump"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_plant_lights(F("plant_lights"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_air_mover(F("air_mover"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_r3(F("r3"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_r4(F("r4"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_r5(F("r5"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_r6(F("r6"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_r7(F("r7"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_fan0(F("fan0"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_fan1(F("fan1"), SENML_UNIT_RATIO);
+
+void callback(MQTTClient *client, char topic[], char bytes[], int length);
+
+void checkWifiModule();
+
+void connectMqttClient();
+
+void setupStaticSenMLObjects();
+
+void checkStateChangesAndSendUpdateMessageIfNecessary();
+
+void createAndSendSensorMessage();
+
+String mqtt_server = "mqtt.imle.io";
+MQTTClient mqtt;
+
+Interval change_interval{
+    .PUB_INTERVAL = 5000,
+};
+Interval box_interval{
+    .PUB_INTERVAL = 5000,
+};
+
 Relay *mixers[] = {&fan0, &fan1};
 
-NutrientDosser dosser(&DefaultFeedChart, &pump_flora_gro, &pump_flora_bloom, &pump_flora_micro, &pump_ph_up_reservoir, UP, mixers, 2);
+NutrientDosser dosser(DefaultFeedChart(),
+                      &pump_flora_micro, &pump_flora_gro, &pump_flora_bloom,
+                      &pump_ph_up_reservoir, UP,
+                      mixers, 2);
 
-volatile bool prime = false;
+StaticJsonDocument<200> doc;
 
-void primePumps() {
-  Serial.println(1);
-  prime = true;
+#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
+Pump *manual_pump;
+#endif
+
+#ifdef BUTTON_TOGGLE_ON
+void toggleButton() {
+  if (manual_pump->isOn()) {
+    manual_pump->off();
+  } else {
+    manual_pump->on();
+  }
 }
+#elif defined(BUTTON_TOGGLE_DOSE)
+void toggleButton() {
+  if (!manual_pump->isOn()) {
+    manual_pump->on(15000); // Expect 25 mL
+  }
+}
+#endif
 
 void setup() {
   Serial.begin(9600);
   while (!Serial) {}
 
-  pinMode(2, INPUT_PULLDOWN);
-//  attachInterrupt(digitalPinToInterrupt(2), primePumps, RISING);
+  pump_flora_micro.setCalibrationKValue(255);
+  pump_flora_gro.setCalibrationKValue(255);
+  pump_flora_bloom.setCalibrationKValue(255);
+  pump_ph_up_reservoir.setCalibrationKValue(255);
+  pump_ph_up_basin.setCalibrationKValue(255);
+  pump_ph_down_basin.setCalibrationKValue(255);
 
-  delay(2000);
-  dosser.doseRegimen(10000, 0); // TODO: Run test
+  if (!bme.begin()) {
+    Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
+    while (true);
+  }
+
+  setupStaticSenMLObjects();
+
+#ifndef DISABLE_NET
+  checkWifiModule();
+
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
+  while (status != WL_CONNECTED) {
+    status = WiFi.begin(ssid, pass);
+    delay(10000);
+  }
+  Serial.println("Connected to wifi");
+
+  mqtt.begin(mqtt_server.c_str(), wifiClient);
+  mqtt.onMessageAdvanced(callback);
+
+  connectMqttClient();
+
+  mqtt.subscribe(MQTT_TOPIC_IN_COMMAND);
+  mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
+#endif
+
+  pinMode(2, INPUT_PULLDOWN);
+
+#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
+  manual_pump = &pump_flora_bloom;
+#endif
+
+#ifdef BUTTON_HOLD_ON
+  pinMode(2, INPUT_PULLDOWN);
+#elif defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_DOSE)
+  attachInterrupt(digitalPinToInterrupt(2), toggleButton, RISING);
+#endif
+
+//  delay(2000);
+//  dosser.doseRegimen(15160, 3); // TODO: Run test
+}
+
+void callback(MQTTClient *client, char topic[], char bytes[], int length) {
+  Serial.print(topic);
+  Serial.print(" ");
+  for (int i = 0; i < length; ++i) {
+    Serial.print(bytes[i]);
+  }
+  Serial.println();
+
+  DeserializationError error = deserializeJson(doc, bytes, length);
+  if (error != DeserializationError::Ok) {
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (topic == MQTT_TOPIC_IN_STATUS) {
+
+  }
 }
 
 void loop() {
-  if (digitalRead(2) == HIGH) {
-    pump_flora_micro.on();
-  } else {
-    pump_flora_micro.off();
+  if (box_interval.last_pub_ms + box_interval.PUB_INTERVAL < millis()) {
+    box_interval.last_pub_ms = millis();
+    createAndSendSensorMessage();
   }
 
+#if defined(BUTTON_TOGGLE_DOSE)
+  if (manual_pump != nullptr && manual_pump->isOn()) {
+    manual_pump->checkShouldOff();
+  }
+#endif
+
+#ifndef DISABLE_NET
+  mqtt.loop();
+
+  if (!mqtt.connected()) {
+    connectMqttClient();
+  }
+#endif
+
+#ifdef BUTTON_HOLD_ON
+  if (manual_pump != nullptr) {
+    if (digitalRead(2) == HIGH) {
+      if (!manual_pump->isOn()) {
+        manual_pump->on();
+      }
+    } else {
+      if (manual_pump->isOn()) {
+        manual_pump->off();
+      }
+    }
+  }
+#endif
+
+  checkStateChangesAndSendUpdateMessageIfNecessary();
+
+#ifndef DISABLE_NET
+  if (change_interval.last_pub_ms + change_interval.PUB_INTERVAL < millis()) {
+    change_interval.last_pub_ms = millis();
+    mqtt.publish(MQTT_TOPIC_OUT_SENSORS, "{\"sensor\":2}");
+  }
+#endif
+
   delay(20);
+}
 
-//  Serial.println("r0 on");
-//  digitalWrite(1, LOW);
-//  delay(1000);
-//  digitalWrite(1, HIGH);
-//  Serial.println("r0 off");
-//  delay(1000);
-//
-//  Serial.println("r1 on");
-//  digitalWrite(0, LOW);
-//  delay(1000);
-//  digitalWrite(0, HIGH);
-//  Serial.println("r1 off");
-//  delay(1000);
-//
-//  Serial.println("r2 on");
-//  digitalWrite(A0, LOW);
-//  delay(1000);
-//  digitalWrite(A0, HIGH);
-//  Serial.println("r2 off");
-//  delay(1000);
-//
-//  Serial.println("r3 on");
-//  digitalWrite(A1, LOW);
-//  delay(1000);
-//  digitalWrite(A1, HIGH);
-//  Serial.println("r3 off");
-//  delay(1000);
-//
-//  Serial.println("r4 on");
-//  digitalWrite(A2, LOW);
-//  delay(1000);
-//  digitalWrite(A2, HIGH);
-//  Serial.println("r4 off");
-//  delay(1000);
-//
-//  Serial.println("r5 on");
-//  digitalWrite(A3, LOW);
-//  delay(1000);
-//  digitalWrite(A3, HIGH);
-//  Serial.println("r5 off");
-//  delay(1000);
-//
-//  Serial.println("r6 on");
-//  digitalWrite(A4, LOW);
-//  delay(1000);
-//  digitalWrite(A4, HIGH);
-//  Serial.println("r6 off");
-//  delay(1000);
-//
-//  Serial.println("r7 on");
-//  digitalWrite(A5, LOW);
-//  delay(1000);
-//  digitalWrite(A5, HIGH);
-//  Serial.println("r7 off");
-//  delay(1000);
+void checkWifiModule() {
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    while (true);
+  }
 
+  String fv = WiFiClass::firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Please upgrade the firmware");
+  }
+}
 
+void connectMqttClient() {
+  Serial.print("Attempting to connect to MQTT server at: ");
+  Serial.println(mqtt_server);
+  if (!mqtt.connect(SECRET_MQTT_CLIENT_ID)) {
+//  if (!mqtt.connect(SECRET_MQTT_CLIENT_ID, SECRET_MQTT_USER, SECRET_MQTT_PASS)) {
+    Serial.println("Unable to authenticate against mqtt endpoint.");
+    Serial.println(mqtt.lastError());
+    while (true);
+  }
+  Serial.println("Connected to mqtt server.");
+}
 
+PhysicalStates last_states;
 
-//  Serial.println("p0 on");
-//  p0.on();
-//  delay(1000);
-//  p0.off();
-//  Serial.println("p0 off");
-//  delay(100);
-//
-//  Serial.println("p1 on");
-//  p1.on();
-//  delay(1000);
-//  p1.off();
-//  Serial.println("p1 off");
-//  delay(100);
-//
-//  Serial.println("p2 on");
-//  p2.on();
-//  delay(1000);
-//  p2.off();
-//  Serial.println("p2 off");
-//  delay(100);
-//
-//  Serial.println("p3 on");
-//  p3.on();
-//  delay(1000);
-//  p3.off();
-//  Serial.println("p3 off");
-//  delay(100);
-//
-//  Serial.println("p4 on");
-//  p4.on();
-//  delay(1000);
-//  p4.off();
-//  Serial.println("p4 off");
-//  delay(100);
-//
-//  Serial.println("p5 on");
-//  p5.on();
-//  delay(1000);
-//  p5.off();
-//  Serial.println("p5 off");
-//  delay(100);
+void checkStateChangesAndSendUpdateMessageIfNecessary() {
+  state.clear();
+
+  if (last_states.pump_flora_micro != pump_flora_micro.isOn()) {
+    state.add(&sml_pump_flora_micro);
+    last_states.pump_flora_micro = pump_flora_micro.isOn();
+    sml_pump_flora_micro.set(last_states.pump_flora_micro);
+  }
+  if (last_states.pump_flora_gro != pump_flora_gro.isOn()) {
+    state.add(&sml_pump_flora_gro);
+    last_states.pump_flora_gro = pump_flora_gro.isOn();
+    sml_pump_flora_gro.set(last_states.pump_flora_gro);
+  }
+  if (last_states.pump_flora_bloom != pump_flora_bloom.isOn()) {
+    state.add(&sml_pump_flora_bloom);
+    last_states.pump_flora_bloom = pump_flora_bloom.isOn();
+    sml_pump_flora_bloom.set(last_states.pump_flora_bloom);
+  }
+  if (last_states.pump_ph_up_reservoir != pump_ph_up_reservoir.isOn()) {
+    state.add(&sml_pump_ph_up_reservoir);
+    last_states.pump_ph_up_reservoir = pump_ph_up_reservoir.isOn();
+    sml_pump_ph_up_reservoir.set(last_states.pump_ph_up_reservoir);
+  }
+  if (last_states.pump_ph_up_basin != pump_ph_up_basin.isOn()) {
+    state.add(&sml_pump_ph_up_basin);
+    last_states.pump_ph_up_basin = pump_ph_up_basin.isOn();
+    sml_pump_ph_up_basin.set(last_states.pump_ph_up_basin);
+  }
+  if (last_states.pump_ph_down_basin != pump_ph_down_basin.isOn()) {
+    state.add(&sml_pump_ph_down_basin);
+    last_states.pump_ph_down_basin = pump_ph_down_basin.isOn();
+    sml_pump_ph_down_basin.set(last_states.pump_ph_down_basin);
+  }
+  if (last_states.submersible_pump != submersible_pump.isOn()) {
+    state.add(&sml_submersible_pump);
+    last_states.submersible_pump = submersible_pump.isOn();
+    sml_submersible_pump.set(last_states.submersible_pump);
+  }
+  if (last_states.plant_lights != plant_lights.isOn()) {
+    state.add(&sml_plant_lights);
+    last_states.plant_lights = plant_lights.isOn();
+    sml_plant_lights.set(last_states.plant_lights);
+  }
+  if (last_states.air_mover != air_mover.isOn()) {
+    state.add(&sml_air_mover);
+    last_states.air_mover = air_mover.isOn();
+    sml_air_mover.set(last_states.air_mover);
+  }
+  if (last_states.r3 != r3.isOn()) {
+    state.add(&sml_r3);
+    last_states.r3 = r3.isOn();
+    sml_r3.set(last_states.r3);
+  }
+  if (last_states.r4 != r4.isOn()) {
+    state.add(&sml_r4);
+    last_states.r4 = r4.isOn();
+    sml_r4.set(last_states.r4);
+  }
+  if (last_states.r5 != r5.isOn()) {
+    state.add(&sml_r5);
+    last_states.r5 = r5.isOn();
+    sml_r5.set(last_states.r5);
+  }
+  if (last_states.r6 != r6.isOn()) {
+    state.add(&sml_r6);
+    last_states.r6 = r6.isOn();
+    sml_r6.set(last_states.r6);
+  }
+  if (last_states.r7 != r7.isOn()) {
+    state.add(&sml_r7);
+    last_states.r7 = r7.isOn();
+    sml_r7.set(last_states.r7);
+  }
+  if (last_states.fan0 != fan0.isOn()) {
+    state.add(&sml_fan0);
+    last_states.fan0 = fan0.isOn();
+    sml_fan0.set(last_states.fan0);
+  }
+  if (last_states.fan1 != fan1.isOn()) {
+    state.add(&sml_fan1);
+    last_states.fan1 = fan1.isOn();
+    sml_fan1.set(last_states.fan1);
+  }
+
+  if (state.getFirst() != nullptr) {
+    StringStream sml_string_stream;
+    sml_string_stream.flush();
+    state.toJson(&sml_string_stream);
+    Serial.print(MQTT_TOPIC_OUT_ACTIONS " ");
+    Serial.println(sml_string_stream.str());
+#ifndef DISABLE_NET
+    Serial.println(mqtt.publish(MQTT_TOPIC_OUT_ACTIONS, sml_string_stream.str()));
+#endif
+  }
+}
+
+sensors_event_t sensor_event;
+
+// https://tools.ietf.org/html/rfc8428#section-12.1
+void createAndSendSensorMessage() {
+  bme_temp->getEvent(&sensor_event);
+  temperature.set(sensor_event.temperature);
+
+  bme_pressure->getEvent(&sensor_event);
+  pressure.set(sensor_event.pressure * 100); // read unit is hPa (*100 to get Pa)
+
+  bme_humidity->getEvent(&sensor_event);
+  humidity.set(sensor_event.relative_humidity);
+
+  StringStream sml_string_stream;
+  sml_string_stream.flush();
+  box.toJson(&sml_string_stream);
+  Serial.print(MQTT_TOPIC_OUT_SENSORS " ");
+  Serial.println(sml_string_stream.str());
+#ifndef DISABLE_NET
+  Serial.println(mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str()));
+#endif
+}
+
+void setupStaticSenMLObjects() {
+  box.add(&temperature);
+  box.add(&pressure);
+  box.add(&humidity);
 }

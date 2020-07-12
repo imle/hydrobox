@@ -6,8 +6,11 @@
 #include "FeedChart.h"
 
 
-const unsigned long MixTimeMS = 5000;
-const double MilliliterToMilliseconds = 100.0f / 60.0f / 1000.0f;
+const unsigned long MixTimeMS = 7000;
+const unsigned long SettleTimeMS = 2000;
+const double MilliliterToMilliseconds = 70.0 / (60.0 * 1000.0);
+
+#define DEBUG_NUTRIENT_DOSSER
 
 typedef enum {
   UP = 0,
@@ -39,10 +42,10 @@ class NutrientDosser {
 
   void mix(unsigned long ms);
 
-  void dose(unsigned long water_volume_in_ml, int regimen);
+  void dose(double water_volume_in_ml, int regimen);
 
  public:
-  void doseRegimen(unsigned long water_volume_in_ml, int regimen);
+  void doseRegimen(double water_volume_in_ml, int regimen);
 };
 
 #endif //HPCC_NUTRIENTDOSSER_H

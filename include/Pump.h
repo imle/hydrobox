@@ -32,7 +32,7 @@ class Pump {
   void onBlocking(unsigned long ms);
 
   void beginCalibration();
-  void setCalibrationKValue(int k);
+  void setCalibrationKValue(byte k);
   void endCalibration();
 };
 

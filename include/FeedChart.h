@@ -1,8 +1,8 @@
 #ifndef HPCC_FEEDCHART_H
 #define HPCC_FEEDCHART_H
 
-const float LitersPerUSGallon = 3.79f;
-const float MillilitersPerUSGallon = LitersPerUSGallon * 1000.0f;
+const double LitersPerUSGallon = 3.79;
+const double MillilitersPerUSGallon = LitersPerUSGallon * 1000.0;
 
 struct FeedChartRegimen {
   double flora_micro;
@@ -15,6 +15,6 @@ struct FeedChart {
   FeedChartRegimen regimens[FeedChartRegimens];
 };
 
-extern const FeedChart DefaultFeedChart;
+FeedChart const * DefaultFeedChart();
 
 #endif //HPCC_FEEDCHART_H
