@@ -2,6 +2,7 @@
 #define HPCC_PHYSICALSTATES_H
 
 struct PhysicalStates {
+    bool pumps_locked_off;
     bool pump_flora_micro;
     bool pump_flora_gro;
     bool pump_flora_bloom;

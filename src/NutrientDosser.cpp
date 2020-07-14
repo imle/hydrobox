@@ -3,26 +3,26 @@
 
 NutrientDosser::NutrientDosser(
     const FeedChart *feed_chart,
-    Pump *flora_micro,
-    Pump *flora_gro,
-    Pump *flora_bloom,
-    Pump *ph_changer,
+    Pump &flora_micro,
+    Pump &flora_gro,
+    Pump &flora_bloom,
+    Pump &ph_changer,
     PHDirection ph_direction,
     Relay **mixers,
     int mixer_count
 ) : feed_chart(feed_chart),
-    pump_flora_micro(flora_micro),
-    pump_flora_gro(flora_gro),
-    pump_flora_bloom(flora_bloom),
+    pf_micro(flora_micro),
+    pf_gro(flora_gro),
+    pf_bloom(flora_bloom),
     pump_ph_changer(ph_changer),
     ph_direction(ph_direction),
     mixers(mixers),
     mixer_count(mixer_count) {}
 
 void NutrientDosser::doseRegimen(double water_volume_in_ml, int regimen) {
-  this->mix(MixTimeMS);
-
-  delay(SettleTimeMS); // Let it settle a small amount
+//  this->mix(MixTimeMS);
+//
+//  delay(SettleTimeMS); // Let it settle a small amount
 
   this->dose(water_volume_in_ml, regimen);
 }
@@ -62,27 +62,33 @@ void NutrientDosser::dose(double water_volume_in_ml, int regimen) {
   Serial.println(dose_amount, 8);
   Serial.println(dose_time, 8);
 #endif
-  this->pump_flora_micro->on((unsigned long)(round(dose_time)));
+  this->pf_micro.on((unsigned long) (round(dose_time)));
 
-  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_gro;
-  dose_time = dose_amount / MilliliterToMilliseconds;
-#ifdef DEBUG_NUTRIENT_DOSSER
-  Serial.println(dose_amount, 8);
-  Serial.println(dose_time, 8);
-#endif
-  this->pump_flora_gro->on((unsigned long)(round(dose_time)));
+//  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_gro;
+//  dose_time = dose_amount / MilliliterToMilliseconds;
+//#ifdef DEBUG_NUTRIENT_DOSSER
+//  Serial.println(dose_amount, 8);
+//  Serial.println(dose_time, 8);
+//#endif
+//  this->pf_gro.on((unsigned long) (round(dose_time)));
+//
+//  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_bloom;
+//  dose_time = dose_amount / MilliliterToMilliseconds;
+//#ifdef DEBUG_NUTRIENT_DOSSER
+//  Serial.println(dose_amount, 8);
+//  Serial.println(dose_time, 8);
+//#endif
+//  this->pf_bloom.on((unsigned long) (round(dose_time)));
 
-  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_bloom;
-  dose_time = dose_amount / MilliliterToMilliseconds;
-#ifdef DEBUG_NUTRIENT_DOSSER
-  Serial.println(dose_amount, 8);
-  Serial.println(dose_time, 8);
-#endif
-  this->pump_flora_bloom->on((unsigned long)(round(dose_time)));
-
-  while (this->pump_flora_micro->isOn() || this->pump_flora_gro->isOn() || this->pump_flora_bloom->isOn()) {
-    this->pump_flora_micro->checkShouldOff();
-    this->pump_flora_gro->checkShouldOff();
-    this->pump_flora_bloom->checkShouldOff();
+  while (
+      this->pf_micro.state() == Pump::State::ON
+//      ||
+//      this->pf_gro.state() == Pump::State::ON
+//      ||
+//      this->pf_bloom.state() == Pump::State::ON
+  ) {
+    this->pf_micro.checkShouldOff();
+//    this->pf_gro.checkShouldOff();
+//    this->pf_bloom.checkShouldOff();
   }
 }

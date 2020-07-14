@@ -24,6 +24,7 @@
 
 
 #define DISABLE_NET
+#define DISABLE_SERIAL_DEBUG
 //#define BUTTON_HOLD_ON
 //#define BUTTON_TOGGLE_ON
 #define BUTTON_TOGGLE_DOSE
@@ -39,12 +40,14 @@ Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
-Pump pump_flora_micro(11, KAddressEEPROMDefault + 8 * 0);    // Top
-Pump pump_flora_gro(10, KAddressEEPROMDefault + 8 * 1);      //
-Pump pump_flora_bloom(9, KAddressEEPROMDefault + 8 * 2);     //
-Pump pump_ph_up_reservoir(6, KAddressEEPROMDefault + 8 * 3); //
-Pump pump_ph_up_basin(5, KAddressEEPROMDefault + 8 * 4);     //
-Pump pump_ph_down_basin(3, KAddressEEPROMDefault + 8 * 5);   // Bottom
+Adafruit_PWMServoDriver driver;
+
+Pump pump_flora_micro(&driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    |
+Pump pump_flora_gro(&driver, 1, KAddressEEPROMDefault + 8 * 2);       //        |
+Pump pump_flora_bloom(&driver, 2, KAddressEEPROMDefault + 8 * 4);     //        |
+Pump pump_ph_up_reservoir(&driver, 3, KAddressEEPROMDefault + 8 * 6); //        |
+Pump pump_ph_up_basin(&driver, 4, KAddressEEPROMDefault + 8 * 8);     //        |
+Pump pump_ph_down_basin(&driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom |
 
 Relay submersible_pump(1, HIGH); // Left  | Plug BL | Water Pump
 Relay plant_lights(0, HIGH);     //       | Plug TL | Plant Lights
@@ -64,6 +67,7 @@ SenMLFloatRecord pressure(KPN_SENML_PRESSURE, SENML_UNIT_PASCAL);
 SenMLFloatRecord humidity(KPN_SENML_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
 
 SenMLPack state(SENML_BASE_NAME_STATE);
+SenMLBoolRecord sml_pumps_locked_off(F("pumps_locked_off"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_micro(F("pump_flora_micro"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_gro(F("pump_flora_gro"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_bloom(F("pump_flora_bloom"), SENML_UNIT_RATIO);
@@ -106,28 +110,32 @@ Interval box_interval{
 Relay *mixers[] = {&fan0, &fan1};
 
 NutrientDosser dosser(DefaultFeedChart(),
-                      &pump_flora_micro, &pump_flora_gro, &pump_flora_bloom,
-                      &pump_ph_up_reservoir, UP,
+                      pump_flora_micro, pump_flora_gro, pump_flora_bloom,
+                      pump_ph_up_reservoir, UP,
                       mixers, 2);
 
 StaticJsonDocument<200> doc;
 
 #if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
-Pump *manual_pump;
+Pump *button_pump;
+#endif
+#ifdef BUTTON_TOGGLE_DOSE
+bool should_dose = false;
+bool is_dosing = false;
 #endif
 
 #ifdef BUTTON_TOGGLE_ON
 void toggleButton() {
-  if (manual_pump->isOn()) {
-    manual_pump->off();
+  if (button_pump->state() == Pump::State::ON) {
+    button_pump->off();
   } else {
-    manual_pump->on();
+    button_pump->on();
   }
 }
 #elif defined(BUTTON_TOGGLE_DOSE)
 void toggleButton() {
-  if (!manual_pump->isOn()) {
-    manual_pump->on(15000); // Expect 25 mL
+  if (!is_dosing) {
+    should_dose = true;
   }
 }
 #endif
@@ -136,16 +144,26 @@ void setup() {
   Serial.begin(9600);
   while (!Serial) {}
 
-  pump_flora_micro.setCalibrationKValue(255);
-  pump_flora_gro.setCalibrationKValue(255);
-  pump_flora_bloom.setCalibrationKValue(255);
-  pump_ph_up_reservoir.setCalibrationKValue(255);
-  pump_ph_up_basin.setCalibrationKValue(255);
-  pump_ph_down_basin.setCalibrationKValue(255);
+#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
+  button_pump = &pump_flora_micro;
+//  button_pump = &pump_flora_gro;
+//  button_pump = &pump_flora_bloom;
+//  button_pump = &pump_ph_up_reservoir;
+//  button_pump = &pump_ph_up_basin;
+//  button_pump = &pump_ph_down_basin;
+#endif
 
   if (!bme.begin()) {
     Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
     while (true);
+  }
+
+  driver.begin();
+  driver.setPWMFreq(1600);
+
+  // Shut off all pins on the driver in case they may be on.
+  for (int i = 0; i < 16; ++i) {
+    driver.setPin(i, 0);
   }
 
   setupStaticSenMLObjects();
@@ -172,27 +190,22 @@ void setup() {
 
   pinMode(2, INPUT_PULLDOWN);
 
-#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
-  manual_pump = &pump_flora_bloom;
-#endif
-
 #ifdef BUTTON_HOLD_ON
   pinMode(2, INPUT_PULLDOWN);
 #elif defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_DOSE)
   attachInterrupt(digitalPinToInterrupt(2), toggleButton, RISING);
 #endif
-
-//  delay(2000);
-//  dosser.doseRegimen(15160, 3); // TODO: Run test
 }
 
 void callback(MQTTClient *client, char topic[], char bytes[], int length) {
+#ifndef DISABLE_SERIAL_DEBUG
   Serial.print(topic);
   Serial.print(" ");
   for (int i = 0; i < length; ++i) {
     Serial.print(bytes[i]);
   }
   Serial.println();
+#endif
 
   DeserializationError error = deserializeJson(doc, bytes, length);
   if (error != DeserializationError::Ok) {
@@ -206,16 +219,24 @@ void callback(MQTTClient *client, char topic[], char bytes[], int length) {
 }
 
 void loop() {
+#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
+  if (Serial.available()) {
+    long val = Serial.parseInt();
+    Serial.println(val);
+    button_pump->setCalibrationKValue(val);
+#ifdef BUTTON_TOGGLE_ON
+    if (button_pump->state() == Pump::State::ON) {
+      // Turn on again to set new k value
+      button_pump->on();
+    }
+#endif
+  }
+#endif
+
   if (box_interval.last_pub_ms + box_interval.PUB_INTERVAL < millis()) {
     box_interval.last_pub_ms = millis();
     createAndSendSensorMessage();
   }
-
-#if defined(BUTTON_TOGGLE_DOSE)
-  if (manual_pump != nullptr && manual_pump->isOn()) {
-    manual_pump->checkShouldOff();
-  }
-#endif
 
 #ifndef DISABLE_NET
   mqtt.loop();
@@ -225,15 +246,24 @@ void loop() {
   }
 #endif
 
+#ifdef BUTTON_TOGGLE_DOSE
+  if (should_dose && !is_dosing) {
+    is_dosing = true;
+    should_dose = false;
+    dosser.doseRegimen(15160, 3);
+    is_dosing = false;
+  }
+#endif
+
 #ifdef BUTTON_HOLD_ON
-  if (manual_pump != nullptr) {
+  if (button_pump != nullptr) {
     if (digitalRead(2) == HIGH) {
-      if (!manual_pump->isOn()) {
-        manual_pump->on();
+      if (!button_pump->state() == Pump::State::ON) {
+        button_pump->on();
       }
     } else {
-      if (manual_pump->isOn()) {
-        manual_pump->off();
+      if (button_pump->state() == Pump::State::ON) {
+        button_pump->off();
       }
     }
   }
@@ -280,34 +310,41 @@ PhysicalStates last_states;
 void checkStateChangesAndSendUpdateMessageIfNecessary() {
   state.clear();
 
-  if (last_states.pump_flora_micro != pump_flora_micro.isOn()) {
+  // If any one pump is locked off, all of them are
+  if (last_states.pumps_locked_off != (pump_flora_micro.state() == Pump::State::LOCKED_OFF)) {
     state.add(&sml_pump_flora_micro);
-    last_states.pump_flora_micro = pump_flora_micro.isOn();
+    last_states.pumps_locked_off = pump_flora_micro.state() == Pump::State::LOCKED_OFF;
+    sml_pumps_locked_off.set(last_states.pumps_locked_off);
+  }
+
+  if (last_states.pump_flora_micro != (pump_flora_micro.state() == Pump::State::ON)) {
+    state.add(&sml_pump_flora_micro);
+    last_states.pump_flora_micro = pump_flora_micro.state() == Pump::State::ON;
     sml_pump_flora_micro.set(last_states.pump_flora_micro);
   }
-  if (last_states.pump_flora_gro != pump_flora_gro.isOn()) {
+  if (last_states.pump_flora_gro != pump_flora_gro.state() == Pump::State::ON) {
     state.add(&sml_pump_flora_gro);
-    last_states.pump_flora_gro = pump_flora_gro.isOn();
+    last_states.pump_flora_gro = pump_flora_gro.state() == Pump::State::ON;
     sml_pump_flora_gro.set(last_states.pump_flora_gro);
   }
-  if (last_states.pump_flora_bloom != pump_flora_bloom.isOn()) {
+  if (last_states.pump_flora_bloom != pump_flora_bloom.state() == Pump::State::ON) {
     state.add(&sml_pump_flora_bloom);
-    last_states.pump_flora_bloom = pump_flora_bloom.isOn();
+    last_states.pump_flora_bloom = pump_flora_bloom.state() == Pump::State::ON;
     sml_pump_flora_bloom.set(last_states.pump_flora_bloom);
   }
-  if (last_states.pump_ph_up_reservoir != pump_ph_up_reservoir.isOn()) {
+  if (last_states.pump_ph_up_reservoir != pump_ph_up_reservoir.state() == Pump::State::ON) {
     state.add(&sml_pump_ph_up_reservoir);
-    last_states.pump_ph_up_reservoir = pump_ph_up_reservoir.isOn();
+    last_states.pump_ph_up_reservoir = pump_ph_up_reservoir.state() == Pump::State::ON;
     sml_pump_ph_up_reservoir.set(last_states.pump_ph_up_reservoir);
   }
-  if (last_states.pump_ph_up_basin != pump_ph_up_basin.isOn()) {
+  if (last_states.pump_ph_up_basin != pump_ph_up_basin.state() == Pump::State::ON) {
     state.add(&sml_pump_ph_up_basin);
-    last_states.pump_ph_up_basin = pump_ph_up_basin.isOn();
+    last_states.pump_ph_up_basin = pump_ph_up_basin.state() == Pump::State::ON;
     sml_pump_ph_up_basin.set(last_states.pump_ph_up_basin);
   }
-  if (last_states.pump_ph_down_basin != pump_ph_down_basin.isOn()) {
+  if (last_states.pump_ph_down_basin != pump_ph_down_basin.state() == Pump::State::ON) {
     state.add(&sml_pump_ph_down_basin);
-    last_states.pump_ph_down_basin = pump_ph_down_basin.isOn();
+    last_states.pump_ph_down_basin = pump_ph_down_basin.state() == Pump::State::ON;
     sml_pump_ph_down_basin.set(last_states.pump_ph_down_basin);
   }
   if (last_states.submersible_pump != submersible_pump.isOn()) {
@@ -362,11 +399,15 @@ void checkStateChangesAndSendUpdateMessageIfNecessary() {
   }
 
   if (state.getFirst() != nullptr) {
+#if !defined(DISABLE_SERIAL_DEBUG) && !defined(DISABLE_NET)
     StringStream sml_string_stream;
     sml_string_stream.flush();
     state.toJson(&sml_string_stream);
+#endif
+#ifndef DISABLE_SERIAL_DEBUG
     Serial.print(MQTT_TOPIC_OUT_ACTIONS " ");
     Serial.println(sml_string_stream.str());
+#endif
 #ifndef DISABLE_NET
     Serial.println(mqtt.publish(MQTT_TOPIC_OUT_ACTIONS, sml_string_stream.str()));
 #endif
@@ -386,11 +427,15 @@ void createAndSendSensorMessage() {
   bme_humidity->getEvent(&sensor_event);
   humidity.set(sensor_event.relative_humidity);
 
+#if !defined(DISABLE_SERIAL_DEBUG) && !defined(DISABLE_NET)
   StringStream sml_string_stream;
   sml_string_stream.flush();
   box.toJson(&sml_string_stream);
+#endif
+#ifndef DISABLE_SERIAL_DEBUG
   Serial.print(MQTT_TOPIC_OUT_SENSORS " ");
   Serial.println(sml_string_stream.str());
+#endif
 #ifndef DISABLE_NET
   Serial.println(mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str()));
 #endif

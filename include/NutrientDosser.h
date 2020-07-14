@@ -8,7 +8,7 @@
 
 const unsigned long MixTimeMS = 7000;
 const unsigned long SettleTimeMS = 2000;
-const double MilliliterToMilliseconds = 70.0 / (60.0 * 1000.0);
+const double MilliliterToMilliseconds = 80.0 / (60.0 * 1000.0);
 
 #define DEBUG_NUTRIENT_DOSSER
 
@@ -21,10 +21,10 @@ class NutrientDosser {
  public:
   NutrientDosser(
       const FeedChart *feed_chart,
-      Pump *flora_micro,
-      Pump *flora_gro,
-      Pump *flora_bloom,
-      Pump *ph_changer,
+      Pump &flora_micro,
+      Pump &flora_gro,
+      Pump &flora_bloom,
+      Pump &ph_changer,
       PHDirection ph_direction,
       Relay **mixers,
       int mixer_count
@@ -32,10 +32,10 @@ class NutrientDosser {
 
  protected:
   const FeedChart *const feed_chart;
-  Pump *const pump_flora_micro;
-  Pump *const pump_flora_gro;
-  Pump *const pump_flora_bloom;
-  Pump *const pump_ph_changer;
+  Pump &pf_micro;
+  Pump &pf_gro;
+  Pump &pf_bloom;
+  Pump &pump_ph_changer;
   PHDirection ph_direction;
   Relay **mixers;
   int mixer_count;
