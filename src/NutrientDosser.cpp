@@ -20,9 +20,9 @@ NutrientDosser::NutrientDosser(
     mixer_count(mixer_count) {}
 
 void NutrientDosser::doseRegimen(double water_volume_in_ml, int regimen) {
-//  this->mix(MixTimeMS);
-//
-//  delay(SettleTimeMS); // Let it settle a small amount
+  this->mix(MixTimeMS);
+
+  delay(SettleTimeMS); // Let it settle a small amount
 
   this->dose(water_volume_in_ml, regimen);
 }
@@ -64,31 +64,25 @@ void NutrientDosser::dose(double water_volume_in_ml, int regimen) {
 #endif
   this->pf_micro.on((unsigned long) (round(dose_time)));
 
-//  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_gro;
-//  dose_time = dose_amount / MilliliterToMilliseconds;
-//#ifdef DEBUG_NUTRIENT_DOSSER
-//  Serial.println(dose_amount, 8);
-//  Serial.println(dose_time, 8);
-//#endif
-//  this->pf_gro.on((unsigned long) (round(dose_time)));
-//
-//  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_bloom;
-//  dose_time = dose_amount / MilliliterToMilliseconds;
-//#ifdef DEBUG_NUTRIENT_DOSSER
-//  Serial.println(dose_amount, 8);
-//  Serial.println(dose_time, 8);
-//#endif
-//  this->pf_bloom.on((unsigned long) (round(dose_time)));
+  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_gro;
+  dose_time = dose_amount / MilliliterToMilliseconds;
+#ifdef DEBUG_NUTRIENT_DOSSER
+  Serial.println(dose_amount, 8);
+  Serial.println(dose_time, 8);
+#endif
+  this->pf_gro.on((unsigned long) (round(dose_time)));
 
-  while (
-      this->pf_micro.isOn()
-//      ||
-//      this->pf_gro.isOn()
-//      ||
-//      this->pf_bloom.isOn()
-  ) {
+  dose_amount = water_volume_in_ml * this->feed_chart->regimens[regimen].flora_bloom;
+  dose_time = dose_amount / MilliliterToMilliseconds;
+#ifdef DEBUG_NUTRIENT_DOSSER
+  Serial.println(dose_amount, 8);
+  Serial.println(dose_time, 8);
+#endif
+  this->pf_bloom.on((unsigned long) (round(dose_time)));
+
+  while (this->pf_micro.isOn() || this->pf_gro.isOn() || this->pf_bloom.isOn()) {
     this->pf_micro.checkShouldOff();
-//    this->pf_gro.checkShouldOff();
-//    this->pf_bloom.checkShouldOff();
+    this->pf_gro.checkShouldOff();
+    this->pf_bloom.checkShouldOff();
   }
 }
