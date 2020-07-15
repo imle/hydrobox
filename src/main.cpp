@@ -17,6 +17,7 @@
 #include <FeedChart.h>
 #include <EEPROM.h>
 #include <PhysicalStates.h>
+#include <DosserCalibrator.h>
 #include "secret/wifi.h"
 #include "secret/mqtt.h"
 #include "constants/mqtt.h"
@@ -27,7 +28,7 @@
 #define DISABLE_SERIAL_DEBUG
 //#define BUTTON_HOLD_ON
 //#define BUTTON_TOGGLE_ON
-#define BUTTON_TOGGLE_DOSE
+//#define BUTTON_TOGGLE_CALIBRATOR
 
 char ssid[] = SECRET_SSID;    // your network SSID (name)
 char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
@@ -42,12 +43,13 @@ Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
 Adafruit_PWMServoDriver driver;
 
-Pump pump_flora_micro(&driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    |
-Pump pump_flora_gro(&driver, 1, KAddressEEPROMDefault + 8 * 2);       //        |
-Pump pump_flora_bloom(&driver, 2, KAddressEEPROMDefault + 8 * 4);     //        |
-Pump pump_ph_up_reservoir(&driver, 3, KAddressEEPROMDefault + 8 * 6); //        |
-Pump pump_ph_up_basin(&driver, 4, KAddressEEPROMDefault + 8 * 8);     //        |
-Pump pump_ph_down_basin(&driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom |
+// k values are calculated @ 13.3V (on regulator)
+Pump pump_flora_micro(&driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    | k=3950
+Pump pump_flora_gro(&driver, 1, KAddressEEPROMDefault + 8 * 2);       //        | k=3660
+Pump pump_flora_bloom(&driver, 2, KAddressEEPROMDefault + 8 * 4);     //        | k=3700
+Pump pump_ph_up_reservoir(&driver, 3, KAddressEEPROMDefault + 8 * 6); //        | k=3740
+Pump pump_ph_up_basin(&driver, 4, KAddressEEPROMDefault + 8 * 8);     //        | k=3730
+Pump pump_ph_down_basin(&driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom | k=3750
 
 Relay submersible_pump(1, HIGH); // Left  | Plug BL | Water Pump
 Relay plant_lights(0, HIGH);     //       | Plug TL | Plant Lights
@@ -109,6 +111,8 @@ Interval box_interval{
 
 Relay *mixers[] = {&fan0, &fan1};
 
+DosserCalibrator calibrator;
+
 NutrientDosser dosser(DefaultFeedChart(),
                       pump_flora_micro, pump_flora_gro, pump_flora_bloom,
                       pump_ph_up_reservoir, UP,
@@ -116,23 +120,23 @@ NutrientDosser dosser(DefaultFeedChart(),
 
 StaticJsonDocument<200> doc;
 
-#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
+#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
 Pump *button_pump;
 #endif
-#ifdef BUTTON_TOGGLE_DOSE
+#ifdef BUTTON_TOGGLE_CALIBRATOR
 bool should_dose = false;
 bool is_dosing = false;
 #endif
 
 #ifdef BUTTON_TOGGLE_ON
 void toggleButton() {
-  if (button_pump->state() == Pump::State::ON) {
+  if (button_pump->isOn()) {
     button_pump->off();
   } else {
     button_pump->on();
   }
 }
-#elif defined(BUTTON_TOGGLE_DOSE)
+#elif defined(BUTTON_TOGGLE_CALIBRATOR)
 void toggleButton() {
   if (!is_dosing) {
     should_dose = true;
@@ -143,15 +147,6 @@ void toggleButton() {
 void setup() {
   Serial.begin(9600);
   while (!Serial) {}
-
-#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
-  button_pump = &pump_flora_micro;
-//  button_pump = &pump_flora_gro;
-//  button_pump = &pump_flora_bloom;
-//  button_pump = &pump_ph_up_reservoir;
-//  button_pump = &pump_ph_up_basin;
-//  button_pump = &pump_ph_down_basin;
-#endif
 
   if (!bme.begin()) {
     Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
@@ -167,6 +162,10 @@ void setup() {
   }
 
   setupStaticSenMLObjects();
+
+#if defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
+  button_pump = &pump_ph_down_basin;
+#endif
 
 #ifndef DISABLE_NET
   checkWifiModule();
@@ -188,11 +187,13 @@ void setup() {
   mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
 #endif
 
+#if defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
   pinMode(2, INPUT_PULLDOWN);
+#endif
 
 #ifdef BUTTON_HOLD_ON
   pinMode(2, INPUT_PULLDOWN);
-#elif defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_DOSE)
+#elif defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
   attachInterrupt(digitalPinToInterrupt(2), toggleButton, RISING);
 #endif
 }
@@ -219,13 +220,13 @@ void callback(MQTTClient *client, char topic[], char bytes[], int length) {
 }
 
 void loop() {
-#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_DOSE)
+#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
   if (Serial.available()) {
     long val = Serial.parseInt();
     Serial.println(val);
     button_pump->setCalibrationKValue(val);
 #ifdef BUTTON_TOGGLE_ON
-    if (button_pump->state() == Pump::State::ON) {
+    if (button_pump->isOn()) {
       // Turn on again to set new k value
       button_pump->on();
     }
@@ -246,11 +247,11 @@ void loop() {
   }
 #endif
 
-#ifdef BUTTON_TOGGLE_DOSE
+#ifdef BUTTON_TOGGLE_CALIBRATOR
   if (should_dose && !is_dosing) {
     is_dosing = true;
     should_dose = false;
-    dosser.doseRegimen(15160, 3);
+    calibrator.dose(*button_pump);
     is_dosing = false;
   }
 #endif
@@ -258,11 +259,11 @@ void loop() {
 #ifdef BUTTON_HOLD_ON
   if (button_pump != nullptr) {
     if (digitalRead(2) == HIGH) {
-      if (!button_pump->state() == Pump::State::ON) {
+      if (!button_pump->isOn()) {
         button_pump->on();
       }
     } else {
-      if (button_pump->state() == Pump::State::ON) {
+      if (button_pump->isOn()) {
         button_pump->off();
       }
     }
@@ -317,34 +318,34 @@ void checkStateChangesAndSendUpdateMessageIfNecessary() {
     sml_pumps_locked_off.set(last_states.pumps_locked_off);
   }
 
-  if (last_states.pump_flora_micro != (pump_flora_micro.state() == Pump::State::ON)) {
+  if (last_states.pump_flora_micro != pump_flora_micro.isOn()) {
     state.add(&sml_pump_flora_micro);
-    last_states.pump_flora_micro = pump_flora_micro.state() == Pump::State::ON;
+    last_states.pump_flora_micro = pump_flora_micro.isOn();
     sml_pump_flora_micro.set(last_states.pump_flora_micro);
   }
-  if (last_states.pump_flora_gro != pump_flora_gro.state() == Pump::State::ON) {
+  if (last_states.pump_flora_gro != pump_flora_gro.isOn()) {
     state.add(&sml_pump_flora_gro);
-    last_states.pump_flora_gro = pump_flora_gro.state() == Pump::State::ON;
+    last_states.pump_flora_gro = pump_flora_gro.isOn();
     sml_pump_flora_gro.set(last_states.pump_flora_gro);
   }
-  if (last_states.pump_flora_bloom != pump_flora_bloom.state() == Pump::State::ON) {
+  if (last_states.pump_flora_bloom != pump_flora_bloom.isOn()) {
     state.add(&sml_pump_flora_bloom);
-    last_states.pump_flora_bloom = pump_flora_bloom.state() == Pump::State::ON;
+    last_states.pump_flora_bloom = pump_flora_bloom.isOn();
     sml_pump_flora_bloom.set(last_states.pump_flora_bloom);
   }
-  if (last_states.pump_ph_up_reservoir != pump_ph_up_reservoir.state() == Pump::State::ON) {
+  if (last_states.pump_ph_up_reservoir != pump_ph_up_reservoir.isOn()) {
     state.add(&sml_pump_ph_up_reservoir);
-    last_states.pump_ph_up_reservoir = pump_ph_up_reservoir.state() == Pump::State::ON;
+    last_states.pump_ph_up_reservoir = pump_ph_up_reservoir.isOn();
     sml_pump_ph_up_reservoir.set(last_states.pump_ph_up_reservoir);
   }
-  if (last_states.pump_ph_up_basin != pump_ph_up_basin.state() == Pump::State::ON) {
+  if (last_states.pump_ph_up_basin != pump_ph_up_basin.isOn()) {
     state.add(&sml_pump_ph_up_basin);
-    last_states.pump_ph_up_basin = pump_ph_up_basin.state() == Pump::State::ON;
+    last_states.pump_ph_up_basin = pump_ph_up_basin.isOn();
     sml_pump_ph_up_basin.set(last_states.pump_ph_up_basin);
   }
-  if (last_states.pump_ph_down_basin != pump_ph_down_basin.state() == Pump::State::ON) {
+  if (last_states.pump_ph_down_basin != pump_ph_down_basin.isOn()) {
     state.add(&sml_pump_ph_down_basin);
-    last_states.pump_ph_down_basin = pump_ph_down_basin.state() == Pump::State::ON;
+    last_states.pump_ph_down_basin = pump_ph_down_basin.isOn();
     sml_pump_ph_down_basin.set(last_states.pump_ph_down_basin);
   }
   if (last_states.submersible_pump != submersible_pump.isOn()) {

@@ -117,6 +117,10 @@ Pump::State Pump::state() const {
   }
 }
 
+bool Pump::isOn() const {
+  return this->state() == State::ON;
+}
+
 void Pump::delayNextOn(unsigned long ms) {
   this->delayOn = millis() + ms;
 }

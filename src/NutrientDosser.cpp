@@ -81,11 +81,11 @@ void NutrientDosser::dose(double water_volume_in_ml, int regimen) {
 //  this->pf_bloom.on((unsigned long) (round(dose_time)));
 
   while (
-      this->pf_micro.state() == Pump::State::ON
+      this->pf_micro.isOn()
 //      ||
-//      this->pf_gro.state() == Pump::State::ON
+//      this->pf_gro.isOn()
 //      ||
-//      this->pf_bloom.state() == Pump::State::ON
+//      this->pf_bloom.isOn()
   ) {
     this->pf_micro.checkShouldOff();
 //    this->pf_gro.checkShouldOff();

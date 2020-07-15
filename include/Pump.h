@@ -33,16 +33,17 @@ class Pump {
   Pump(Adafruit_PWMServoDriver *driver, pin_size_t pin, int k_address_eeprom);
 
   State on();
-  State state() const;
   void off(bool emergency = false);
+  bool onBlocking(unsigned long ms);
 
   State on(unsigned long ms);
   bool checkShouldOff();  // For async (returns true if it turns off the pump)
 
+  State state() const;
+  bool isOn() const;
+
   void delayNextOn(unsigned long ms);
   void cancelDelay();
-
-  bool onBlocking(unsigned long ms);
 
   void beginCalibration();
   void setCalibrationKValue(uint16_t k);
