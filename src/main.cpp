@@ -25,7 +25,7 @@
 
 
 #define DISABLE_NET
-#define DISABLE_SERIAL_DEBUG
+//#define DISABLE_SERIAL_DEBUG
 //#define BUTTON_HOLD_ON
 //#define BUTTON_TOGGLE_ON
 //#define BUTTON_TOGGLE_CALIBRATOR
@@ -63,11 +63,13 @@ Relay r7(A5, HIGH);              // Right |
 Relay fan0(12, LOW);
 Relay fan1(13, LOW);
 
+// https://tools.ietf.org/html/rfc8428#section-12.1
 SenMLPack box(SENML_BASE_NAME_BOX);
 SenMLFloatRecord temperature(KPN_SENML_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
 SenMLFloatRecord pressure(KPN_SENML_PRESSURE, SENML_UNIT_PASCAL);
 SenMLFloatRecord humidity(KPN_SENML_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
 
+// https://tools.ietf.org/html/rfc8428#section-12.1
 SenMLPack state(SENML_BASE_NAME_STATE);
 SenMLBoolRecord sml_pumps_locked_off(F("pumps_locked_off"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_micro(F("pump_flora_micro"), SENML_UNIT_RATIO);
@@ -400,7 +402,7 @@ void checkStateChangesAndSendUpdateMessageIfNecessary() {
   }
 
   if (state.getFirst() != nullptr) {
-#if !defined(DISABLE_SERIAL_DEBUG) && !defined(DISABLE_NET)
+#if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
     StringStream sml_string_stream;
     sml_string_stream.flush();
     state.toJson(&sml_string_stream);
@@ -417,7 +419,6 @@ void checkStateChangesAndSendUpdateMessageIfNecessary() {
 
 sensors_event_t sensor_event;
 
-// https://tools.ietf.org/html/rfc8428#section-12.1
 void createAndSendSensorMessage() {
   bme_temp->getEvent(&sensor_event);
   temperature.set(sensor_event.temperature);
@@ -428,7 +429,7 @@ void createAndSendSensorMessage() {
   bme_humidity->getEvent(&sensor_event);
   humidity.set(sensor_event.relative_humidity);
 
-#if !defined(DISABLE_SERIAL_DEBUG) && !defined(DISABLE_NET)
+#if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
   sml_string_stream.flush();
   box.toJson(&sml_string_stream);
