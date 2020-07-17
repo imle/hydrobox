@@ -5,12 +5,12 @@
 #include <ArduinoJson.h>
 #include <AccelStepper.h>
 #include <Adafruit_BME280.h>
+#include <TimedAction.h>
 #include <MQTT.h>
 #include <StringStream.h>
 #include <senml_pack.h>
 #include <kpn_senml.h>
 
-#include <Interval.h>
 #include <Pump.h>
 #include <Relay.h>
 #include <NutrientDosser.h>
@@ -26,6 +26,7 @@
 
 #define DISABLE_NET
 //#define DISABLE_SERIAL_DEBUG
+#define BUTTON_HOLD_ON_MIXERS
 //#define BUTTON_HOLD_ON
 //#define BUTTON_TOGGLE_ON
 //#define BUTTON_TOGGLE_CALIBRATOR
@@ -89,27 +90,23 @@ SenMLBoolRecord sml_r7(F("r7"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_fan0(F("fan0"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_fan1(F("fan1"), SENML_UNIT_RATIO);
 
-void callback(MQTTClient *client, char topic[], char bytes[], int length);
-
 void checkWifiModule();
-
 void connectMqttClient();
-
 void setupStaticSenMLObjects();
 
 void checkStateChangesAndSendUpdateMessageIfNecessary();
+void createAndSendBoxSensorMessage();
+void requestAtlasSensorReadings();
+void checkOnNutrientDossing();
 
-void createAndSendSensorMessage();
+TimedAction th_nutrient_dossing = TimedAction(100, checkOnNutrientDossing);
+TimedAction th_request_sensor_readings = TimedAction(15000, requestAtlasSensorReadings);
+TimedAction th_publish_box_sensor_readings = TimedAction(5000, createAndSendBoxSensorMessage);
 
 String mqtt_server = "mqtt.imle.io";
 MQTTClient mqtt;
 
-Interval change_interval{
-    .PUB_INTERVAL = 5000,
-};
-Interval box_interval{
-    .PUB_INTERVAL = 5000,
-};
+void callback(MQTTClient *client, char topic[], char bytes[], int length);
 
 Relay *mixers[] = {&fan0, &fan1};
 
@@ -236,11 +233,6 @@ void loop() {
   }
 #endif
 
-  if (box_interval.last_pub_ms + box_interval.PUB_INTERVAL < millis()) {
-    box_interval.last_pub_ms = millis();
-    createAndSendSensorMessage();
-  }
-
 #ifndef DISABLE_NET
   mqtt.loop();
 
@@ -272,16 +264,38 @@ void loop() {
   }
 #endif
 
-  checkStateChangesAndSendUpdateMessageIfNecessary();
-
-#ifndef DISABLE_NET
-  if (change_interval.last_pub_ms + change_interval.PUB_INTERVAL < millis()) {
-    change_interval.last_pub_ms = millis();
-    mqtt.publish(MQTT_TOPIC_OUT_SENSORS, "{\"sensor\":2}");
+#ifdef BUTTON_HOLD_ON_MIXERS
+  if (digitalRead(2) == HIGH) {
+    if (!mixers[0]->isOn()) {
+      for (auto &mixer : mixers) {
+        mixer->on();
+      }
+    }
+  } else {
+    if (mixers[0]->isOn()) {
+      for (auto &mixer : mixers) {
+        mixer->off();
+      }
+    }
   }
 #endif
 
+  checkStateChangesAndSendUpdateMessageIfNecessary();
+
+  th_nutrient_dossing.check();
+  th_request_sensor_readings.check();
+  th_publish_box_sensor_readings.check();
+
   delay(20);
+}
+
+void requestAtlasSensorReadings() {
+#ifndef DISABLE_NET
+  mqtt.publish(MQTT_TOPIC_OUT_SENSORS, "{\"sensor\":2}"); // Fake
+#endif
+}
+
+void checkOnNutrientDossing() {
 }
 
 void checkWifiModule() {
@@ -419,7 +433,7 @@ void checkStateChangesAndSendUpdateMessageIfNecessary() {
 
 sensors_event_t sensor_event;
 
-void createAndSendSensorMessage() {
+void createAndSendBoxSensorMessage() {
   bme_temp->getEvent(&sensor_event);
   temperature.set(sensor_event.temperature);
 
