@@ -22,8 +22,9 @@ class Pump {
   bool is_on{false};               // Current state of the pump
   uint16_t k;                      // Value used for calibration (0 - 255)
   int k_address_eeprom;            // Address of k value in EEPROM
-  unsigned long onForMS;           // How long the pump should be on. For use with checkShouldOff()
-  unsigned long delayOn{0};        // How long the pump should be delayed for before async on is allowed to run
+  bool on_async{false};            // Has the pump been set on async
+  unsigned long on_for_ms;         // How long the pump should be on. For use with checkShouldOff()
+  unsigned long delay_on{0};       // How long the pump should be delayed for before async on is allowed to run
   bool calibrating;                // Is this pump calibrating
   bool locked_off;                 // Off and stay off in case of leak or overflow
  public:
@@ -34,7 +35,6 @@ class Pump {
 
   State on();
   void off(bool emergency = false);
-  bool onBlocking(unsigned long ms);
 
   State on(unsigned long ms);
   bool checkShouldOff();  // For async (returns true if it turns off the pump)

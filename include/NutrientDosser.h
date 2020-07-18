@@ -40,11 +40,11 @@ class NutrientDosser {
   Relay **mixers;
   int mixer_count;
 
-  void mix(unsigned long ms);
-
   void dose(double water_volume_in_ml, int regimen);
 
  public:
+  void mix(unsigned long ms);
+
   void doseRegimen(double water_volume_in_ml, int regimen);
 };
 

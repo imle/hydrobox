@@ -57,7 +57,8 @@ Pump::State Pump::on(unsigned long ms) {
     return state;
   }
 
-  this->onForMS = millis() + ms;
+  this->on_for_ms = millis() + ms;
+  this->on_async = true;
   return this->on();
 }
 
@@ -66,6 +67,7 @@ void Pump::off(bool emergency) {
     this->locked_off = true;
   }
 
+  this->on_async = false;
   this->is_on = false;
   if (this->driver != nullptr) {
     this->driver->setPin(this->pin, 0);
@@ -74,29 +76,16 @@ void Pump::off(bool emergency) {
   }
 }
 
-bool Pump::onBlocking(unsigned long ms) {
-  State state = this->state();
-  if (state != State::OFF) {
-    return false;
-  }
-
-  this->onForMS = millis() + ms;
-  this->on();
-
-  while (this->state()) {
-    this->checkShouldOff();
-    delay(10);
-  }
-
-  return true;
-}
-
 bool Pump::checkShouldOff() {
   if (this->state() != State::ON) {
     return false;
   }
 
-  if (this->onForMS > millis()) {
+  if (!this->on_async) {
+    return false;
+  }
+
+  if (this->on_for_ms > millis()) {
     return false;
   }
 
@@ -108,7 +97,7 @@ bool Pump::checkShouldOff() {
 Pump::State Pump::state() const {
   if (this->locked_off) {
     return State::LOCKED_OFF;
-  } else if (this->delayOn > millis()) {
+  } else if (this->delay_on > millis()) {
     return State::DELAYED_OFF;
   } else if (this->is_on) {
     return State::ON;
@@ -122,11 +111,11 @@ bool Pump::isOn() const {
 }
 
 void Pump::delayNextOn(unsigned long ms) {
-  this->delayOn = millis() + ms;
+  this->delay_on = millis() + ms;
 }
 
 void Pump::cancelDelay() {
-  this->delayOn = 0;
+  this->delay_on = 0;
 }
 
 void Pump::beginCalibration() {

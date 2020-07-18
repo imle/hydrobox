@@ -12,29 +12,21 @@ void Relay::on() {
 }
 
 bool Relay::on(unsigned long ms) {
-  if (this->delayOn > millis()) {
+  if (this->delay_on > millis()) {
     return false;
   }
 
-  this->onForMS = millis() + ms;
+  this->on_for_ms = millis() + ms;
+  this->on_async = false;
   this->on();
 
   return true;
 }
 
 void Relay::off() {
+  this->on_async = false;
   this->is_on = false;
   digitalWrite(this->pin, this->off_state == LOW ? LOW : HIGH);
-}
-
-void Relay::onBlocking(unsigned long ms) {
-  this->onForMS = millis() + ms;
-  this->on();
-
-  while (this->isOn()) {
-    this->checkShouldOff();
-    delay(10);
-  }
 }
 
 bool Relay::checkShouldOff() {
@@ -42,7 +34,11 @@ bool Relay::checkShouldOff() {
     return false;
   }
 
-  if (this->onForMS > millis()) {
+  if (!this->on_async) {
+    return false;
+  }
+
+  if (this->on_for_ms > millis()) {
     return false;
   }
 
@@ -56,9 +52,9 @@ bool Relay::isOn() const {
 }
 
 void Relay::delayNextOn(unsigned long ms) {
-  this->delayOn = millis() + ms;
+  this->delay_on = millis() + ms;
 }
 
 void Relay::cancelDelay() {
-  this->delayOn = 0;
+  this->delay_on = 0;
 }

@@ -20,10 +20,6 @@ NutrientDosser::NutrientDosser(
     mixer_count(mixer_count) {}
 
 void NutrientDosser::doseRegimen(double water_volume_in_ml, int regimen) {
-  this->mix(MixTimeMS);
-
-  delay(SettleTimeMS); // Let it settle a small amount
-
   this->dose(water_volume_in_ml, regimen);
 }
 

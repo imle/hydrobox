@@ -3,9 +3,11 @@
 #include <SPI.h>
 
 #include <ArduinoJson.h>
-#include <AccelStepper.h>
 #include <Adafruit_BME280.h>
-#include <TimedAction.h>
+#include <SoftTimer.h>
+#include <DelayRun.h>
+#include <Debouncer.h>
+#include <Task.h>
 #include <MQTT.h>
 #include <StringStream.h>
 #include <senml_pack.h>
@@ -17,7 +19,7 @@
 #include <FeedChart.h>
 #include <EEPROM.h>
 #include <PhysicalStates.h>
-#include <DosserCalibrator.h>
+#include <button_actions.h>
 #include "secret/wifi.h"
 #include "secret/mqtt.h"
 #include "constants/mqtt.h"
@@ -25,11 +27,11 @@
 
 
 #define DISABLE_NET
-//#define DISABLE_SERIAL_DEBUG
-#define BUTTON_HOLD_ON_MIXERS
-//#define BUTTON_HOLD_ON
-//#define BUTTON_TOGGLE_ON
-//#define BUTTON_TOGGLE_CALIBRATOR
+#define DISABLE_SERIAL_DEBUG
+
+#define BUTTON_PIN 2
+void pinChanged();
+Debouncer button_debouncer(BUTTON_PIN, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
 
 char ssid[] = SECRET_SSID;    // your network SSID (name)
 char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
@@ -92,16 +94,43 @@ SenMLBoolRecord sml_fan1(F("fan1"), SENML_UNIT_RATIO);
 
 void checkWifiModule();
 void connectMqttClient();
-void setupStaticSenMLObjects();
 
-void checkStateChangesAndSendUpdateMessageIfNecessary();
-void createAndSendBoxSensorMessage();
-void requestAtlasSensorReadings();
-void checkOnNutrientDossing();
+void balancePh(Task *me);
+void runMqttLoop(Task *me);
+void checkDossingState(Task *me);
+void checkIfOffablesShouldOff(Task *me);
+void requestAtlasSensorReadings(Task *me);
+void createAndSendBoxSensorMessage(Task *me);
+void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
 
-TimedAction th_nutrient_dossing = TimedAction(100, checkOnNutrientDossing);
-TimedAction th_request_sensor_readings = TimedAction(15000, requestAtlasSensorReadings);
-TimedAction th_publish_box_sensor_readings = TimedAction(5000, createAndSendBoxSensorMessage);
+Task th_balance_ph(1000, balancePh);
+Task th_run_mqtt_loop(100, runMqttLoop);
+Task th_check_dossing_state(10, checkDossingState);
+Task th_request_sensor_readings(15000, requestAtlasSensorReadings);
+Task th_publish_box_sensor_readings(5000, createAndSendBoxSensorMessage);
+Task th_check_if_offables_should_off(50, checkIfOffablesShouldOff);
+Task th_check_state_changes_and_notify(100, checkStateChangesAndSendUpdateMessageIfNecessary);
+
+bool startMixNutrients(Task *me);
+bool stopMixNutrients(Task *me);
+bool startDossing(Task *me);
+bool startPhBalancing(Task *me);
+bool stopPhBalancing(Task *me);
+bool flushReservoirToBasin(Task *me);
+
+/// Below is reverse order to avoid multiple places of definition of actions
+// Sixth
+DelayRun th_flush_reservoir_to_basin(6000, flushReservoirToBasin);
+// Fifth
+DelayRun th_stop_ph_balancing(6000, stopPhBalancing, &th_flush_reservoir_to_basin);
+// Fourth-ish (not actually called by th_start_dossing, triggered by pumps finishing)
+DelayRun th_start_ph_balancing(4000, startPhBalancing, &th_stop_ph_balancing);
+// Third (variable timing so the off condition is checked elsewhere, no need for a stop call)
+DelayRun th_start_dossing(4000, startDossing);
+// Second
+DelayRun th_stop_mix_nutrients(5000, stopMixNutrients, &th_start_dossing);
+// First
+DelayRun th_start_mix_nutrients(0, startMixNutrients, &th_stop_mix_nutrients);
 
 String mqtt_server = "mqtt.imle.io";
 MQTTClient mqtt;
@@ -110,8 +139,6 @@ void callback(MQTTClient *client, char topic[], char bytes[], int length);
 
 Relay *mixers[] = {&fan0, &fan1};
 
-DosserCalibrator calibrator;
-
 NutrientDosser dosser(DefaultFeedChart(),
                       pump_flora_micro, pump_flora_gro, pump_flora_bloom,
                       pump_ph_up_reservoir, UP,
@@ -119,29 +146,8 @@ NutrientDosser dosser(DefaultFeedChart(),
 
 StaticJsonDocument<200> doc;
 
-#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
 Pump *button_pump;
-#endif
-#ifdef BUTTON_TOGGLE_CALIBRATOR
-bool should_dose = false;
 bool is_dosing = false;
-#endif
-
-#ifdef BUTTON_TOGGLE_ON
-void toggleButton() {
-  if (button_pump->isOn()) {
-    button_pump->off();
-  } else {
-    button_pump->on();
-  }
-}
-#elif defined(BUTTON_TOGGLE_CALIBRATOR)
-void toggleButton() {
-  if (!is_dosing) {
-    should_dose = true;
-  }
-}
-#endif
 
 void setup() {
   Serial.begin(9600);
@@ -160,11 +166,11 @@ void setup() {
     driver.setPin(i, 0);
   }
 
-  setupStaticSenMLObjects();
+  box.add(&temperature);
+  box.add(&pressure);
+  box.add(&humidity);
 
-#if defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
   button_pump = &pump_ph_down_basin;
-#endif
 
 #ifndef DISABLE_NET
   checkWifiModule();
@@ -186,15 +192,18 @@ void setup() {
   mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
 #endif
 
-#if defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
-  pinMode(2, INPUT_PULLDOWN);
-#endif
+  SoftTimer.add(&th_run_mqtt_loop);
+  SoftTimer.add(&th_request_sensor_readings);
+  SoftTimer.add(&th_publish_box_sensor_readings);
+  SoftTimer.add(&th_check_if_offables_should_off);
+  SoftTimer.add(&th_check_state_changes_and_notify);
 
-#ifdef BUTTON_HOLD_ON
-  pinMode(2, INPUT_PULLDOWN);
-#elif defined(BUTTON_TOGGLE_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
-  attachInterrupt(digitalPinToInterrupt(2), toggleButton, RISING);
-#endif
+  button_debouncer.init();
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), pinChanged, CHANGE);
+}
+
+void pinChanged() {
+  button_debouncer.pciHandleInterrupt(-1);
 }
 
 void callback(MQTTClient *client, char topic[], char bytes[], int length) {
@@ -218,84 +227,10 @@ void callback(MQTTClient *client, char topic[], char bytes[], int length) {
   }
 }
 
-void loop() {
-#if defined(BUTTON_TOGGLE_ON) || defined(BUTTON_HOLD_ON) || defined(BUTTON_TOGGLE_CALIBRATOR)
-  if (Serial.available()) {
-    long val = Serial.parseInt();
-    Serial.println(val);
-    button_pump->setCalibrationKValue(val);
-#ifdef BUTTON_TOGGLE_ON
-    if (button_pump->isOn()) {
-      // Turn on again to set new k value
-      button_pump->on();
-    }
-#endif
-  }
-#endif
-
-#ifndef DISABLE_NET
-  mqtt.loop();
-
-  if (!mqtt.connected()) {
-    connectMqttClient();
-  }
-#endif
-
-#ifdef BUTTON_TOGGLE_CALIBRATOR
-  if (should_dose && !is_dosing) {
-    is_dosing = true;
-    should_dose = false;
-    calibrator.dose(*button_pump);
-    is_dosing = false;
-  }
-#endif
-
-#ifdef BUTTON_HOLD_ON
-  if (button_pump != nullptr) {
-    if (digitalRead(2) == HIGH) {
-      if (!button_pump->isOn()) {
-        button_pump->on();
-      }
-    } else {
-      if (button_pump->isOn()) {
-        button_pump->off();
-      }
-    }
-  }
-#endif
-
-#ifdef BUTTON_HOLD_ON_MIXERS
-  if (digitalRead(2) == HIGH) {
-    if (!mixers[0]->isOn()) {
-      for (auto &mixer : mixers) {
-        mixer->on();
-      }
-    }
-  } else {
-    if (mixers[0]->isOn()) {
-      for (auto &mixer : mixers) {
-        mixer->off();
-      }
-    }
-  }
-#endif
-
-  checkStateChangesAndSendUpdateMessageIfNecessary();
-
-  th_nutrient_dossing.check();
-  th_request_sensor_readings.check();
-  th_publish_box_sensor_readings.check();
-
-  delay(20);
-}
-
-void requestAtlasSensorReadings() {
+void requestAtlasSensorReadings(Task *me) {
 #ifndef DISABLE_NET
   mqtt.publish(MQTT_TOPIC_OUT_SENSORS, "{\"sensor\":2}"); // Fake
 #endif
-}
-
-void checkOnNutrientDossing() {
 }
 
 void checkWifiModule() {
@@ -324,7 +259,7 @@ void connectMqttClient() {
 
 PhysicalStates last_states;
 
-void checkStateChangesAndSendUpdateMessageIfNecessary() {
+void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
   state.clear();
 
   // If any one pump is locked off, all of them are
@@ -433,7 +368,7 @@ void checkStateChangesAndSendUpdateMessageIfNecessary() {
 
 sensors_event_t sensor_event;
 
-void createAndSendBoxSensorMessage() {
+void createAndSendBoxSensorMessage(Task *me) {
   bme_temp->getEvent(&sensor_event);
   temperature.set(sensor_event.temperature);
 
@@ -457,8 +392,168 @@ void createAndSendBoxSensorMessage() {
 #endif
 }
 
-void setupStaticSenMLObjects() {
-  box.add(&temperature);
-  box.add(&pressure);
-  box.add(&humidity);
+void runMqttLoop(Task *me) {
+#ifndef DISABLE_NET
+  if (!mqtt.connected()) {
+    connectMqttClient();
+  }
+
+  mqtt.loop();
+#endif
 }
+
+bool startMixNutrients(Task *me) {
+  Serial.println("start mixing");
+  for (auto &mixer : mixers) {
+    mixer->on();
+  }
+}
+
+bool stopMixNutrients(Task *me) {
+  Serial.println("stop mixing");
+  for (auto &mixer : mixers) {
+    mixer->off();
+  }
+}
+
+bool startDossing(Task *me) {
+  Serial.println("dossing");
+  // TODO:
+  SoftTimer.add(&th_check_dossing_state);
+}
+
+bool startPhBalancing(Task *me) {
+  Serial.println("balancing ph starting");
+  SoftTimer.add(&th_balance_ph);
+}
+
+void balancePh(Task *me) {
+  Serial.println("balancing ph");
+}
+
+bool stopPhBalancing(Task *me) {
+  Serial.println("balancing ph finished");
+  SoftTimer.remove(&th_balance_ph);
+}
+
+bool flushReservoirToBasin(Task *me) {
+  Serial.println("flushing");
+  // TODO:
+}
+
+void checkIfOffablesShouldOff(Task *me) {
+  pump_flora_micro.checkShouldOff();
+  pump_flora_gro.checkShouldOff();
+  pump_flora_bloom.checkShouldOff();
+  pump_ph_up_reservoir.checkShouldOff();
+  pump_ph_up_basin.checkShouldOff();
+  pump_ph_down_basin.checkShouldOff();
+
+  submersible_pump.checkShouldOff();
+  plant_lights.checkShouldOff();
+  air_mover.checkShouldOff();
+  r3.checkShouldOff();
+  r4.checkShouldOff();
+  r5.checkShouldOff();
+  r6.checkShouldOff();
+  r7.checkShouldOff();
+
+  fan0.checkShouldOff();
+  fan1.checkShouldOff();
+
+#if defined(BUTTON_TOGGLE_CALIBRATOR)
+  if (button_pump != nullptr && !button_pump->isOn()) {
+    is_dosing = false;
+  }
+#endif
+}
+
+void checkDossingState(Task *me) {
+  if (is_dosing && !pump_flora_micro.isOn() && !pump_flora_gro.isOn() && !pump_flora_bloom.isOn()) {
+    Serial.println("finished dossing");
+    is_dosing = false;
+    th_start_ph_balancing.startDelayed();
+  }
+}
+
+#if defined(BUTTON_HOLD_ON_MIXERS)
+
+void buttonPressed() {
+  for (auto &mixer : mixers) {
+    mixer->on();
+  }
+}
+
+void buttonReleased(unsigned long pressTimespan) {
+  for (auto &mixer : mixers) {
+    mixer->off();
+  }
+}
+
+#elif defined(BUTTON_HOLD_ON_PUMPS)
+
+void buttonPressed() {
+  if (button_pump != nullptr) {
+    if (!button_pump->isOn()) {
+      button_pump->on();
+    }
+  }
+}
+
+void buttonReleased(unsigned long pressTimespan) {
+  if (button_pump != nullptr) {
+    if (button_pump->isOn()) {
+      button_pump->off();
+    }
+  }
+}
+
+#elif defined(BUTTON_TOGGLE_ON)
+
+void buttonPressed() {
+  if (button_pump->isOn()) {
+    button_pump->off();
+  } else {
+    button_pump->on();
+  }
+}
+
+void buttonReleased(unsigned long pressTimespan) {}
+
+#elif defined(BUTTON_TOGGLE_CALIBRATOR)
+
+void buttonPressed() {
+  if (!is_dosing) {
+    is_dosing = true;
+
+    const double WaterVolumeInMl = 15160.0;
+    const double DosePerGallon = 7.5;
+    double dose_amount, dose_time;
+
+    // This should yield almost exactly 30mL
+    dose_amount = WaterVolumeInMl * DosePerGallon / MillilitersPerUSGallon;
+    dose_time = dose_amount / MilliliterToMilliseconds;
+
+    Serial.print(dose_amount, 0);
+    Serial.println(" mL");
+    Serial.println(dose_time, 8);
+
+    button_pump->on((unsigned long) (round(dose_time)));
+  }
+}
+
+void buttonReleased(unsigned long pressTimespan) {}
+
+#elif defined(BUTTON_START_DOSE)
+
+void buttonPressed() {
+  if (!is_dosing) {
+    is_dosing = true;
+
+    th_start_mix_nutrients.startDelayed();
+  }
+}
+
+void buttonReleased(unsigned long pressTimespan) {}
+
+#endif
