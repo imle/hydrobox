@@ -107,8 +107,8 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
 Task th_balance_ph(1000, balancePh);
 Task th_run_mqtt_loop(100, runMqttLoop);
 Task th_check_dossing_state(10, checkDossingState);
-Task th_request_sensor_readings(15000, requestAtlasSensorReadings);
-Task th_publish_box_sensor_readings(5000, createAndSendBoxSensorMessage);
+Task th_request_sensor_readings(30000, requestAtlasSensorReadings);
+Task th_publish_box_sensor_readings(10000, createAndSendBoxSensorMessage);
 Task th_check_if_offables_should_off(50, checkIfOffablesShouldOff);
 Task th_check_state_changes_and_notify(100, checkStateChangesAndSendUpdateMessageIfNecessary);
 
