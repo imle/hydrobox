@@ -371,7 +371,6 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
   if (state.getFirst() != nullptr) {
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
     StringStream sml_string_stream;
-    sml_string_stream.flush();
     state.toJson(&sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
@@ -398,7 +397,6 @@ void createAndSendBoxSensorMessage(Task *me) {
 
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
-  sml_string_stream.flush();
   box.toJson(&sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
