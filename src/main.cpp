@@ -1,17 +1,18 @@
 #include <Arduino.h>
+#include <SPI.h> // Must include for WiFiNINA
 #include <WiFiNINA.h>
-#include <SPI.h>
 
+#include <Wire.h>
+#include <MQTT.h>
+#include <StringStream.h>
 #include <ArduinoJson.h>
+#include <senml_pack.h>
+#include <kpn_senml.h>
 #include <Adafruit_BME280.h>
 #include <SoftTimer.h>
 #include <DelayRun.h>
 #include <Debouncer.h>
 #include <Task.h>
-#include <MQTT.h>
-#include <StringStream.h>
-#include <senml_pack.h>
-#include <kpn_senml.h>
 
 #include <Pump.h>
 #include <Relay.h>
@@ -20,6 +21,7 @@
 #include <EEPROM.h>
 #include <PhysicalStates.h>
 #include <button_actions.h>
+#include <Ezo.h>
 #include "secret/wifi.h"
 #include "secret/mqtt.h"
 #include "constants/mqtt.h"
@@ -33,18 +35,17 @@
 void pinChanged();
 Debouncer button_debouncer(BUTTON_PIN, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
 
-char ssid[] = SECRET_SSID;    // your network SSID (name)
-char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
-
-WiFiClient wifiClient;
-uint8_t status = WL_IDLE_STATUS;
-
 Adafruit_BME280 bme; // use I2C interface
 Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
 Adafruit_PWMServoDriver driver;
+
+EzoBoard ezo_ph_basin = EzoBoard(10, "PH Basin"); // Probes in the lower water basin
+EzoBoard ezo_ec_basin = EzoBoard(12, "EC Basin"); // Probes in the lower water basin
+EzoBoard ezo_temp_basin = EzoBoard(13, "Temp Basin"); // Probes in the lower water basin
+EzoBoard ezo_ph_reservoir = EzoBoard(11, "PH Reservoir"); // Probe in the water mixing tank
 
 // k values are calculated @ 13.3V (on regulator)
 Pump pump_flora_micro(&driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    | k=3950
@@ -68,9 +69,9 @@ Relay fan1(13, LOW);
 
 // https://tools.ietf.org/html/rfc8428#section-12.1
 SenMLPack box(SENML_BASE_NAME_BOX);
-SenMLFloatRecord temperature(KPN_SENML_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
-SenMLFloatRecord pressure(KPN_SENML_PRESSURE, SENML_UNIT_PASCAL);
-SenMLFloatRecord humidity(KPN_SENML_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
+SenMLFloatRecord box_temperature(KPN_SENML_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
+SenMLFloatRecord box_pressure(KPN_SENML_PRESSURE, SENML_UNIT_PASCAL);
+SenMLFloatRecord box_humidity(KPN_SENML_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
 
 // https://tools.ietf.org/html/rfc8428#section-12.1
 // Strange issue with library overwriting the unit
@@ -93,50 +94,91 @@ SenMLBoolRecord sml_r7(F("r7"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_fan0(F("fan0"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_fan1(F("fan1"), SENML_UNIT_RATIO);
 
-void checkWifiModule();
+// https://tools.ietf.org/html/rfc8428#section-12.1
+SenMLPack sensors(SENML_BASE_NAME_SENSORS);
+SenMLFloatRecord sensors_ph_basin(F("basin:ph"), SENML_UNIT_PH);
+SenMLFloatRecord sensors_ec_basin(F("basin:ec"), SENML_UNIT_SIEMENS);
+SenMLFloatRecord sensors_temp_basin(F("basin:" KPN_SENML_TEMPERATURE), SENML_UNIT_DEGREES_CELSIUS);
+SenMLFloatRecord sensors_ph_reservoir(F("reservoir:ph"), SENML_UNIT_PH);
+
 void connectMqttClient();
 
-void balancePh(Task *me);
+// Runs often to check for incoming mqtt messages and send those ready for transmission
 void runMqttLoop(Task *me);
-void checkDossingState(Task *me);
-void checkIfOffablesShouldOff(Task *me);
-void requestAtlasSensorReadings(Task *me);
-void createAndSendBoxSensorMessage(Task *me);
-void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
-
-Task th_balance_ph(1000, balancePh);
 Task th_run_mqtt_loop(100, runMqttLoop);
-Task th_check_dossing_state(10, checkDossingState);
-Task th_request_sensor_readings(30000, requestAtlasSensorReadings);
-Task th_publish_box_sensor_readings(10000, createAndSendBoxSensorMessage);
+
+// Ensures all relays and pumps are off if their async-time-on has been exceeded
+void checkIfOffablesShouldOff(Task *me);
 Task th_check_if_offables_should_off(50, checkIfOffablesShouldOff);
+
+// Check the BME280 sensor in the control box
+void createAndSendBoxSensorMessage(Task *me);
+Task th_publish_box_sensor_readings(15000, createAndSendBoxSensorMessage);
+
+// Check for changed state of each relay and pump and publish a state change message if necessary
+void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
 Task th_check_state_changes_and_notify(100, checkStateChangesAndSendUpdateMessageIfNecessary);
 
-bool startMixNutrients(Task *me);
-bool stopMixNutrients(Task *me);
-bool startDossing(Task *me);
-bool startPhBalancing(Task *me);
-bool stopPhBalancing(Task *me);
-bool flushReservoirToBasin(Task *me);
+// Each Atlas sensor is sent the read command
+void requestWaterSensorReadings(Task *me);
+Task th_request_sensor_readings(30000, requestWaterSensorReadings);
 
-/// Below is reverse order to avoid multiple places of definition of actions
-// Sixth
+// Triggered to run after th_request_sensor_readings runs and will remove itself after it finishes
+void receiveAtlasSensorReadings(Task *me);
+Task th_receive_sensor_readings(100, receiveAtlasSensorReadings);
+
+// Triggered once th_receive_sensor_readings has received all sensor readings
+bool createAndSendWaterSensorsMessage(Task *me);
+DelayRun th_create_and_send_water_sensor_message(0, createAndSendWaterSensorsMessage);
+
+
+/// START: Nutrient Dossing Actions
+/// Defined in reverse order to take advantage of the DelayRun `followedBy` field
+
+// 6: Last the reservoir will be flushed to the basin
+bool flushReservoirToBasin(Task *me);
 DelayRun th_flush_reservoir_to_basin(6000, flushReservoirToBasin);
-// Fifth
-DelayRun th_stop_ph_balancing(6000, stopPhBalancing, &th_flush_reservoir_to_basin);
-// Fourth-ish (not actually called by th_start_dossing, triggered by pumps finishing)
-DelayRun th_start_ph_balancing(4000, startPhBalancing, &th_stop_ph_balancing);
-// Third (variable timing so the off condition is checked elsewhere, no need for a stop call)
-DelayRun th_start_dossing(4000, startDossing);
-// Second
-DelayRun th_stop_mix_nutrients(5000, stopMixNutrients, &th_start_dossing);
-// First
+
+// 5: After about 30 minutes, the pH should be balanced
+bool stopPhBalancing(Task *me);
+DelayRun th_stop_ph_balancing(1800000, stopPhBalancing, &th_flush_reservoir_to_basin);
+
+// 4.1: Added when th_start_ph_balancing has been run and will be removed after th_stop_ph_balancing runs
+void dossingBalanceBasinPh(Task *me);
+Task th_balance_ph(1000, dossingBalanceBasinPh);
+
+// 4: Start the pH balancing process after 2 minutes of letting the nutrients disperse
+// not actually called by th_start_dossing, triggered by pumps finishing
+bool startPhBalancing(Task *me);
+DelayRun th_start_ph_balancing(120000, startPhBalancing, &th_stop_ph_balancing);
+
+// 3.1: Added when th_start_dossing has been run and will be removed when all dossing pumps are finished
+void dossingCheckState(Task *me);
+Task th_check_dossing_state(10, dossingCheckState);
+
+// 3: Begin dossing the reservoir with the General Hydroponics nutrients
+bool startDossing(Task *me);
+DelayRun th_start_dossing(10000, startDossing);
+
+// 2: Stop the mixing fans
+bool stopMixNutrients(Task *me);
+DelayRun th_stop_mix_nutrients(15000, stopMixNutrients, &th_start_dossing);
+
+// 1: Start the mixing fans
+bool startMixNutrients(Task *me);
 DelayRun th_start_mix_nutrients(0, startMixNutrients, &th_stop_mix_nutrients);
+
+/// END: Nutrient Dossing Actions
+
+char ssid[] = SECRET_SSID;
+char pass[] = SECRET_PASS;
+
+WiFiClient wifi;
+uint8_t status = WL_IDLE_STATUS;
 
 String mqtt_server = "mqtt.imle.io";
 MQTTClient mqtt;
-
-void callback(MQTTClient *client, char topic[], char bytes[], int length);
+void mqttCallback(MQTTClient *client, char topic[], char bytes[], int length);
 
 Relay *mixers[] = {&fan0, &fan1};
 
@@ -159,6 +201,8 @@ void setup() {
     while (true);
   }
 
+  Wire.begin();
+
   driver.begin();
   driver.setPWMFreq(1600);
 
@@ -167,14 +211,22 @@ void setup() {
     driver.setPin(i, 0);
   }
 
-  box.add(&temperature);
-  box.add(&pressure);
-  box.add(&humidity);
+  box.add(&box_temperature);
+  box.add(&box_pressure);
+  box.add(&box_humidity);
 
   button_pump = &pump_ph_down_basin;
 
 #ifndef DISABLE_NET
-  checkWifiModule();
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    while (true);
+  }
+
+  String fv = WiFiClass::firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Please upgrade the firmware");
+  }
 
   Serial.print("Attempting to connect to SSID: ");
   Serial.println(ssid);
@@ -184,8 +236,8 @@ void setup() {
   }
   Serial.println("Connected to wifi");
 
-  mqtt.begin(mqtt_server.c_str(), wifiClient);
-  mqtt.onMessageAdvanced(callback);
+  mqtt.begin(mqtt_server.c_str(), wifi);
+  mqtt.onMessageAdvanced(mqttCallback);
 
   connectMqttClient();
 
@@ -207,7 +259,7 @@ void pinChanged() {
   button_debouncer.pciHandleInterrupt(-1);
 }
 
-void callback(MQTTClient *client, char topic[], char bytes[], int length) {
+void mqttCallback(MQTTClient *client, char topic[], char bytes[], int length) {
 #ifndef DISABLE_SERIAL_DEBUG
   Serial.print(topic);
   Serial.print(" ");
@@ -228,22 +280,108 @@ void callback(MQTTClient *client, char topic[], char bytes[], int length) {
   }
 }
 
-void requestAtlasSensorReadings(Task *me) {
-#ifndef DISABLE_NET
-  mqtt.publish(MQTT_TOPIC_OUT_SENSORS, "{\"sensor\":2}"); // Fake
-#endif
+float basin_last_temperature = NAN;
+
+void requestWaterSensorReadings(Task *me) {
+  // If we don't have compensation yet, don't worry about it
+  if (basin_last_temperature != NAN) {
+    ezo_ec_basin.sendReadWithTempComp(basin_last_temperature);
+  } else {
+    // TODO: Ensure this will be ok
+    ezo_ec_basin.sendReadCmd();
+  }
+
+  ezo_ph_basin.sendReadCmd();
+  ezo_temp_basin.sendReadCmd();
+  ezo_ph_reservoir.sendReadCmd(); // TODO: Only care about this sensor when dossing
+
+  SoftTimer.add(&th_receive_sensor_readings);
 }
 
-void checkWifiModule() {
-  if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("Communication with WiFi module failed!");
-    while (true);
+float printFailureOnSensor(EzoBoard &sensor) {
+  Serial.print(F("Failed reading sensor "));
+  Serial.println(sensor.getName());
+}
+
+void receiveAtlasSensorReadings(Task *me) {
+  EzoBoard::Error status;
+  bool finished = true;
+
+  if (ezo_ph_basin.isRequestPending()) {
+    status = ezo_ph_basin.receiveReadCmd();
+    finished = status != EzoBoard::NOT_READY;
+    if (status == EzoBoard::FAIL) {
+      printFailureOnSensor(ezo_ph_basin);
+    }
+  }
+  if (ezo_temp_basin.isRequestPending()) {
+    status = ezo_temp_basin.receiveReadCmd();
+    finished = status != EzoBoard::NOT_READY;
+    if (status == EzoBoard::FAIL) {
+      printFailureOnSensor(ezo_temp_basin);
+    }
+  }
+  if (ezo_ec_basin.isRequestPending()) {
+    status = ezo_ec_basin.receiveReadCmd();
+    finished = status != EzoBoard::NOT_READY;
+    if (status == EzoBoard::FAIL) {
+      printFailureOnSensor(ezo_ec_basin);
+    }
+  }
+  if (ezo_ph_reservoir.isRequestPending()) {
+    status = ezo_ph_reservoir.receiveReadCmd();
+    finished = status != EzoBoard::NOT_READY;
+    if (status == EzoBoard::FAIL) {
+      printFailureOnSensor(ezo_ph_reservoir);
+    }
   }
 
-  String fv = WiFiClass::firmwareVersion();
-  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
-    Serial.println("Please upgrade the firmware");
+  if (finished) {
+    SoftTimer.remove(&th_receive_sensor_readings);
+    th_create_and_send_water_sensor_message.startDelayed();
   }
+}
+
+bool createAndSendWaterSensorsMessage(Task *me) {
+  sensors.clear();
+
+  if (ezo_ph_basin.getError() == EzoBoard::SUCCESS) {
+    sensors.add(&sensors_ph_basin);
+    sensors_ph_basin.setUnit(SENML_UNIT_PH);
+    sensors_ph_basin.set(ezo_ph_basin.getLastReceivedReading());
+  }
+  if (ezo_temp_basin.getError() == EzoBoard::SUCCESS) {
+    sensors.add(&sensors_temp_basin);
+    sensors_temp_basin.setUnit(SENML_UNIT_DEGREES_CELSIUS);
+    sensors_temp_basin.set(ezo_temp_basin.getLastReceivedReading());
+  }
+  if (ezo_ph_reservoir.getError() == EzoBoard::SUCCESS) {
+    sensors.add(&sensors_ph_reservoir);
+    sensors_ph_reservoir.setUnit(SENML_UNIT_PH);
+    sensors_ph_reservoir.set(ezo_ph_reservoir.getLastReceivedReading());
+  }
+  if (ezo_ec_basin.getError() == EzoBoard::SUCCESS) {
+    sensors.add(&sensors_ec_basin);
+    sensors_ec_basin.setUnit(SENML_UNIT_SIEMENS);
+    sensors_ec_basin.set(ezo_ec_basin.getLastReceivedReading());
+  }
+
+  // Necessary for the ec meter
+  basin_last_temperature = sensors_temp_basin.get();
+
+#if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
+  StringStream sml_string_stream;
+  sensors.toJson(&sml_string_stream);
+#endif
+#ifndef DISABLE_SERIAL_DEBUG
+  Serial.print(MQTT_TOPIC_OUT_SENSORS " ");
+  Serial.print(millis());
+  Serial.print(" ");
+  Serial.println(sml_string_stream.str());
+#endif
+#ifndef DISABLE_NET
+  Serial.println(mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str()));
+#endif
 }
 
 void connectMqttClient() {
@@ -375,6 +513,8 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
     Serial.print(MQTT_TOPIC_OUT_ACTIONS " ");
+    Serial.print(millis());
+    Serial.print(" ");
     Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
@@ -387,13 +527,13 @@ sensors_event_t sensor_event;
 
 void createAndSendBoxSensorMessage(Task *me) {
   bme_temp->getEvent(&sensor_event);
-  temperature.set(sensor_event.temperature);
+  box_temperature.set(sensor_event.temperature);
 
   bme_pressure->getEvent(&sensor_event);
-  pressure.set(sensor_event.pressure * 100); // read unit is hPa (*100 to get Pa)
+  box_pressure.set(sensor_event.pressure * 100); // read unit is hPa (*100 to get Pa)
 
   bme_humidity->getEvent(&sensor_event);
-  humidity.set(sensor_event.relative_humidity);
+  box_humidity.set(sensor_event.relative_humidity);
 
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
@@ -401,6 +541,8 @@ void createAndSendBoxSensorMessage(Task *me) {
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
   Serial.print(MQTT_TOPIC_OUT_SENSORS " ");
+  Serial.print(millis());
+  Serial.print(" ");
   Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
@@ -447,7 +589,7 @@ bool startPhBalancing(Task *me) {
   return true;
 }
 
-void balancePh(Task *me) {
+void dossingBalanceBasinPh(Task *me) {
   Serial.println("balancing ph");
 }
 
@@ -490,7 +632,7 @@ void checkIfOffablesShouldOff(Task *me) {
 #endif
 }
 
-void checkDossingState(Task *me) {
+void dossingCheckState(Task *me) {
   if (is_dosing && !pump_flora_micro.isOn() && !pump_flora_gro.isOn() && !pump_flora_bloom.isOn()) {
     Serial.println("finished dossing");
     is_dosing = false;
