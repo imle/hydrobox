@@ -136,37 +136,42 @@ DelayRun th_create_and_send_water_sensor_message(0, createAndSendWaterSensorsMes
 /// Defined in reverse order to take advantage of the DelayRun `followedBy` field
 
 // 6: Last the reservoir will be flushed to the basin
-bool flushReservoirToBasin(Task *me);
-DelayRun th_flush_reservoir_to_basin(6000, flushReservoirToBasin);
+bool dossingFlushReservoirToBasin(Task *me);
+DelayRun th_flush_reservoir_to_basin(6000, dossingFlushReservoirToBasin);
 
 // 5: After about 30 minutes, the pH should be balanced
-bool stopPhBalancing(Task *me);
-DelayRun th_stop_ph_balancing(1800000, stopPhBalancing, &th_flush_reservoir_to_basin);
+bool dossingStopPhBalancing(Task *me);
+DelayRun th_stop_ph_balancing(1800000, dossingStopPhBalancing, &th_flush_reservoir_to_basin);
 
-// 4.1: Added when th_start_ph_balancing has been run and will be removed after th_stop_ph_balancing runs
-void dossingBalanceBasinPh(Task *me);
-Task th_balance_ph(1000, dossingBalanceBasinPh);
+// 4.2: Stop the pH dossing pumps after 1.333 seconds (~2ml)
+bool dossingStopPhPump(Task *me);
+DelayRun th_stop_ph_pump(1333, dossingStopPhPump);
+
+// 4.1: Recurring task to trigger the pH dossing pumps
+// Added when th_start_ph_balancing has been run and will be removed after th_stop_ph_balancing runs
+void dossingTriggerBalanceBasinPh(Task *me);
+Task th_balance_ph(20000, dossingTriggerBalanceBasinPh);
 
 // 4: Start the pH balancing process after 2 minutes of letting the nutrients disperse
 // not actually called by th_start_dossing, triggered by pumps finishing
-bool startPhBalancing(Task *me);
-DelayRun th_start_ph_balancing(120000, startPhBalancing, &th_stop_ph_balancing);
+bool dossingStartPhBalancing(Task *me);
+DelayRun th_start_ph_balancing(120000, dossingStartPhBalancing, &th_stop_ph_balancing);
 
 // 3.1: Added when th_start_dossing has been run and will be removed when all dossing pumps are finished
 void dossingCheckState(Task *me);
 Task th_check_dossing_state(10, dossingCheckState);
 
 // 3: Begin dossing the reservoir with the General Hydroponics nutrients
-bool startDossing(Task *me);
-DelayRun th_start_dossing(10000, startDossing);
+bool dossingStart(Task *me);
+DelayRun th_start_dossing(10000, dossingStart);
 
 // 2: Stop the mixing fans
-bool stopMixNutrients(Task *me);
-DelayRun th_stop_mix_nutrients(15000, stopMixNutrients, &th_start_dossing);
+bool dossingStopMixNutrients(Task *me);
+DelayRun th_stop_mix_nutrients(15000, dossingStopMixNutrients, &th_start_dossing);
 
 // 1: Start the mixing fans
-bool startMixNutrients(Task *me);
-DelayRun th_start_mix_nutrients(0, startMixNutrients, &th_stop_mix_nutrients);
+bool dossingStartMixNutrients(Task *me);
+DelayRun th_start_mix_nutrients(0, dossingStartMixNutrients, &th_stop_mix_nutrients);
 
 /// END: Nutrient Dossing Actions
 
@@ -560,7 +565,7 @@ void runMqttLoop(Task *me) {
 #endif
 }
 
-bool startMixNutrients(Task *me) {
+bool dossingStartMixNutrients(Task *me) {
   Serial.println("start mixing");
   for (auto &mixer : mixers) {
     mixer->on();
@@ -568,7 +573,7 @@ bool startMixNutrients(Task *me) {
   return true;
 }
 
-bool stopMixNutrients(Task *me) {
+bool dossingStopMixNutrients(Task *me) {
   Serial.println("stop mixing");
   for (auto &mixer : mixers) {
     mixer->off();
@@ -576,30 +581,37 @@ bool stopMixNutrients(Task *me) {
   return true;
 }
 
-bool startDossing(Task *me) {
+bool dossingStart(Task *me) {
   Serial.println("dossing");
   // TODO:
   SoftTimer.add(&th_check_dossing_state);
   return true;
 }
 
-bool startPhBalancing(Task *me) {
+bool dossingStartPhBalancing(Task *me) {
   Serial.println("balancing ph starting");
   SoftTimer.add(&th_balance_ph);
   return true;
 }
 
-void dossingBalanceBasinPh(Task *me) {
+void dossingTriggerBalanceBasinPh(Task *me) {
   Serial.println("balancing ph");
+  Serial.println("  ph pumps on");
+
+  th_stop_ph_pump.startDelayed();
 }
 
-bool stopPhBalancing(Task *me) {
+bool dossingStopPhPump(Task *me) {
+  Serial.println("  ph pumps off");
+}
+
+bool dossingStopPhBalancing(Task *me) {
   Serial.println("balancing ph finished");
   SoftTimer.remove(&th_balance_ph);
   return true;
 }
 
-bool flushReservoirToBasin(Task *me) {
+bool dossingFlushReservoirToBasin(Task *me) {
   Serial.println("flushing");
   // TODO:
   return true;
