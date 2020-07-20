@@ -619,7 +619,8 @@ bool dossingStopPhBalancing(Task *me) {
 
 bool dossingFlushReservoirToBasin(Task *me) {
   Serial.println("flushing");
-  // TODO:
+  // TODO: check amount of water in basin until empty
+  is_dosing = false; // TODO: move this to the final call defined above
   return true;
 }
 
@@ -653,59 +654,29 @@ void checkIfOffablesShouldOff(Task *me) {
 void dossingCheckState(Task *me) {
   if (is_dosing && !pump_flora_micro.isOn() && !pump_flora_gro.isOn() && !pump_flora_bloom.isOn()) {
     Serial.println("finished dossing");
-    is_dosing = false;
     SoftTimer.remove(&th_check_dossing_state);
     th_start_ph_balancing.startDelayed();
   }
 }
 
-#if defined(BUTTON_HOLD_ON_MIXERS)
-
 void buttonPressed() {
+#if defined(BUTTON_HOLD_ON_MIXERS)
   for (auto &mixer : mixers) {
     mixer->on();
   }
-}
-
-void buttonReleased(unsigned long pressTimespan) {
-  for (auto &mixer : mixers) {
-    mixer->off();
-  }
-}
-
 #elif defined(BUTTON_HOLD_ON_PUMPS)
-
-void buttonPressed() {
   if (button_pump != nullptr) {
     if (!button_pump->isOn()) {
       button_pump->on();
     }
   }
-}
-
-void buttonReleased(unsigned long pressTimespan) {
-  if (button_pump != nullptr) {
-    if (button_pump->isOn()) {
-      button_pump->off();
-    }
-  }
-}
-
 #elif defined(BUTTON_TOGGLE_ON)
-
-void buttonPressed() {
   if (button_pump->isOn()) {
     button_pump->off();
   } else {
     button_pump->on();
   }
-}
-
-void buttonReleased(unsigned long pressTimespan) {}
-
 #elif defined(BUTTON_TOGGLE_CALIBRATOR)
-
-void buttonPressed() {
   if (!is_dosing) {
     is_dosing = true;
 
@@ -723,23 +694,35 @@ void buttonPressed() {
 
     button_pump->on((unsigned long) (round(dose_time)));
   }
-}
-
-void buttonReleased(unsigned long pressTimespan) {}
-
 #elif defined(BUTTON_START_DOSE)
-
-void buttonPressed() {
   if (!is_dosing) {
     is_dosing = true;
 
     th_start_mix_nutrients.startDelayed();
   }
+#endif
 }
 
-void buttonReleased(unsigned long pressTimespan) {}
-
+void buttonReleased(unsigned long pressTimespan) {
+#if defined(BUTTON_HOLD_ON_MIXERS)
+  for (auto &mixer : mixers) {
+    mixer->off();
+  }
+#elif defined(BUTTON_HOLD_ON_PUMPS)
+  if (button_pump != nullptr) {
+    if (button_pump->isOn()) {
+      button_pump->off();
+    }
+  }
+#elif defined(BUTTON_TOGGLE_ON)
+  // no action
+#elif defined(BUTTON_TOGGLE_CALIBRATOR)
+  // no action
+#elif defined(BUTTON_START_DOSE)
+  // no action
 #endif
+}
+
 
 #ifdef __arm__
 // should use uinstd.h to define sbrk but Due causes a conflict
