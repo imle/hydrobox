@@ -107,6 +107,11 @@ void connectMqttClient();
 void runMqttLoop(Task *me);
 Task th_run_mqtt_loop(100, runMqttLoop);
 
+// Runs often to check for incoming mqtt messages and send those ready for transmission
+int checkFreeMemory();
+void reportMemory(Task *me);
+Task th_report_memory(1000, reportMemory);
+
 // Ensures all relays and pumps are off if their async-time-on has been exceeded
 void checkIfOffablesShouldOff(Task *me);
 Task th_check_if_offables_should_off(50, checkIfOffablesShouldOff);
@@ -250,6 +255,7 @@ void setup() {
   mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
 #endif
 
+//  SoftTimer.add(&th_report_memory);
   SoftTimer.add(&th_run_mqtt_loop);
   SoftTimer.add(&th_request_sensor_readings);
   SoftTimer.add(&th_publish_box_sensor_readings);
@@ -734,3 +740,26 @@ void buttonPressed() {
 void buttonReleased(unsigned long pressTimespan) {}
 
 #endif
+
+#ifdef __arm__
+// should use uinstd.h to define sbrk but Due causes a conflict
+extern "C" char* sbrk(int incr);
+#else  // __ARM__
+extern char *__brkval;
+#endif  // __arm__
+
+int checkFreeMemory() {
+  char top;
+#ifdef __arm__
+  return &top - reinterpret_cast<char*>(sbrk(0));
+#elif defined(CORE_TEENSY) || (ARDUINO > 103 && ARDUINO != 151)
+  return &top - __brkval;
+#else  // __arm__
+  return __brkval ? &top - __brkval : &top - __malloc_heap_start;
+#endif  // __arm__
+}
+
+void reportMemory(Task *me) {
+  Serial.print(F("MEM FREE: "));
+  Serial.println(checkFreeMemory());
+}
