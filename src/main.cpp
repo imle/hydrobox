@@ -35,12 +35,12 @@
 void pinChanged();
 Debouncer button_debouncer(BUTTON_PIN, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
 
-Adafruit_BME280 bme; // use I2C interface
+Adafruit_BME280 bme;
 Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
-Adafruit_PWMServoDriver driver;
+Adafruit_PWMServoDriver pwm_driver;
 
 EzoBoard ezo_ph_basin = EzoBoard(10, "PH Basin"); // Probes in the lower water basin
 EzoBoard ezo_ec_basin = EzoBoard(12, "EC Basin"); // Probes in the lower water basin
@@ -48,17 +48,17 @@ EzoBoard ezo_temp_basin = EzoBoard(13, "Temp Basin"); // Probes in the lower wat
 EzoBoard ezo_ph_reservoir = EzoBoard(11, "PH Reservoir"); // Probe in the water mixing tank
 
 // k values are calculated @ 13.3V (on regulator)
-Pump pump_flora_micro(&driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    | k=3950
-Pump pump_flora_gro(&driver, 1, KAddressEEPROMDefault + 8 * 2);       //        | k=3660
-Pump pump_flora_bloom(&driver, 2, KAddressEEPROMDefault + 8 * 4);     //        | k=3700
-Pump pump_ph_up_reservoir(&driver, 3, KAddressEEPROMDefault + 8 * 6); //        | k=3740
-Pump pump_ph_up_basin(&driver, 4, KAddressEEPROMDefault + 8 * 8);     //        | k=3730
-Pump pump_ph_down_basin(&driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom | k=3750
+Pump pump_flora_micro(&pwm_driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    | k=3950
+Pump pump_flora_gro(&pwm_driver, 1, KAddressEEPROMDefault + 8 * 2);       //        | k=3660
+Pump pump_flora_bloom(&pwm_driver, 2, KAddressEEPROMDefault + 8 * 4);     //        | k=3700
+Pump pump_ph_up_reservoir(&pwm_driver, 3, KAddressEEPROMDefault + 8 * 6); //        | k=3740
+Pump pump_ph_up_basin(&pwm_driver, 4, KAddressEEPROMDefault + 8 * 8);     //        | k=3730
+Pump pump_ph_down_basin(&pwm_driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom | k=3750
 
 Relay submersible_pump(1, HIGH); // Left  | Plug BL | Water Pump
 Relay plant_lights(0, HIGH);     //       | Plug TL | Plant Lights
 Relay air_mover(A0, HIGH);       //       | Plug TR | Air Mover
-Relay r3(A1, HIGH);              //       | Plug BR |
+Relay bubbler(A1, HIGH);         //       | Plug BR | Bubbler
 Relay r4(A2, HIGH);              //       |
 Relay r5(A3, HIGH);              //       |
 Relay r6(A4, HIGH);              //       |
@@ -86,7 +86,7 @@ SenMLBoolRecord sml_pump_ph_down_basin(F("pump_ph_down_basin"), SENML_UNIT_RATIO
 SenMLBoolRecord sml_submersible_pump(F("submersible_pump"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_plant_lights(F("plant_lights"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_air_mover(F("air_mover"), SENML_UNIT_RATIO);
-SenMLBoolRecord sml_r3(F("r3"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_bubbler(F("bubbler"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r4(F("r4"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r5(F("r5"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r6(F("r6"), SENML_UNIT_RATIO);
@@ -208,12 +208,12 @@ void setup() {
 
   Wire.begin();
 
-  driver.begin();
-  driver.setPWMFreq(1600);
+  pwm_driver.begin();
+  pwm_driver.setPWMFreq(1600);
 
   // Shut off all pins on the driver in case they may be on.
   for (int i = 0; i < 16; ++i) {
-    driver.setPin(i, 0);
+    pwm_driver.setPin(i, 0);
   }
 
   box.add(&box_temperature);
@@ -468,11 +468,11 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
     last_states.air_mover = air_mover.isOn();
     sml_air_mover.set(last_states.air_mover);
   }
-  if (last_states.r3 != r3.isOn()) {
-    sml_r3.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_r3);
-    last_states.r3 = r3.isOn();
-    sml_r3.set(last_states.r3);
+  if (last_states.bubbler != bubbler.isOn()) {
+    sml_bubbler.setUnit(SENML_UNIT_RATIO);
+    state.add(&sml_bubbler);
+    last_states.bubbler = bubbler.isOn();
+    sml_bubbler.set(last_states.bubbler);
   }
   if (last_states.r4 != r4.isOn()) {
     sml_r4.setUnit(SENML_UNIT_RATIO);
@@ -628,7 +628,7 @@ void checkIfOffablesShouldOff(Task *me) {
   submersible_pump.checkShouldOff();
   plant_lights.checkShouldOff();
   air_mover.checkShouldOff();
-  r3.checkShouldOff();
+  bubbler.checkShouldOff();
   r4.checkShouldOff();
   r5.checkShouldOff();
   r6.checkShouldOff();

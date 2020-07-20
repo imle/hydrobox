@@ -12,7 +12,7 @@ struct PhysicalStates {
     bool submersible_pump;
     bool plant_lights;
     bool air_mover;
-    bool r3;
+    bool bubbler;
     bool r4;
     bool r5;
     bool r6;
