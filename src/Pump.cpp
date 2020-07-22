@@ -135,7 +135,7 @@ void Pump::setCalibrationKValue(uint16_t k) {
   if (this->driver != nullptr) {
     EEPROM.put(this->k_address_eeprom, this->k);
   } else {
-    EEPROM.put(this->k_address_eeprom, (uint8_t)this->k);
+    EEPROM.put(this->k_address_eeprom, (uint8_t) this->k);
   }
 }
 

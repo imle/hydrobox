@@ -1,44 +1,64 @@
 #include <Arduino.h>
 #include <SPI.h> // Must include for WiFiNINA
 #include <WiFiNINA.h>
-
+#include <EEPROM.h>
 #include <Wire.h>
-#include <MQTT.h>
+
 #include <StringStream.h>
-#include <ArduinoJson.h>
 #include <senml_pack.h>
 #include <kpn_senml.h>
-#include <Adafruit_BME280.h>
+#include <BME280I2C.h>
+#include <PubSubClient.h>
 #include <SoftTimer.h>
 #include <DelayRun.h>
 #include <Debouncer.h>
 #include <Task.h>
 
+#include <Ezo.h>
+
 #include <Pump.h>
 #include <Relay.h>
 #include <NutrientDosser.h>
 #include <FeedChart.h>
-#include <EEPROM.h>
 #include <PhysicalStates.h>
 #include <button_actions.h>
-#include <Ezo.h>
 #include "secret/wifi.h"
 #include "secret/mqtt.h"
 #include "constants/mqtt.h"
 #include "constants/sensor_data.h"
 
 
-#define DISABLE_NET
-//#define DISABLE_SERIAL_DEBUG
+//#define DISABLE_NET
+#define DISABLE_SERIAL_DEBUG
 
 #define BUTTON_PIN 2
-void pinChanged();
 Debouncer button_debouncer(BUTTON_PIN, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
 
-Adafruit_BME280 bme;
-Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
-Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
-Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
+#define FLOAT_MIN_PIN 7
+bool float_min_state = false;
+Debouncer float_min_debouncer(FLOAT_MIN_PIN, MODE_OPEN_ON_PUSH, // On when down
+                              []() { float_min_state = true; },
+                              [](unsigned long) { float_min_state = false; },
+                              true);
+#define FLOAT_MAX_PIN 8
+bool float_max_state = false;
+Debouncer float_max_debouncer(FLOAT_MAX_PIN, MODE_CLOSE_ON_PUSH, // On when up
+                              []() { float_max_state = true; },
+                              [](unsigned long) { float_max_state = false; },
+                              true);
+
+BME280I2C::Settings bme_settings(
+    BME280::OSR_X1,
+    BME280::OSR_X1,
+    BME280::OSR_X1,
+    BME280::Mode_Forced,
+    BME280::StandbyTime_1000ms,
+    BME280::Filter_Off,
+    BME280::SpiEnable_False,
+    BME280I2C::I2CAddr_0x77 // I2C address. I2C specific.
+);
+
+BME280I2C bme(bme_settings);
 
 Adafruit_PWMServoDriver pwm_driver;
 
@@ -93,6 +113,8 @@ SenMLBoolRecord sml_r6(F("r6"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r7(F("r7"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_fan0(F("fan0"), SENML_UNIT_RATIO);
 SenMLBoolRecord sml_fan1(F("fan1"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_float_min(F("float_min"), SENML_UNIT_RATIO);
+SenMLBoolRecord sml_float_max(F("float_max"), SENML_UNIT_RATIO);
 
 // https://tools.ietf.org/html/rfc8428#section-12.1
 SenMLPack sensors(SENML_BASE_NAME_SENSORS);
@@ -187,8 +209,8 @@ WiFiClient wifi;
 uint8_t status = WL_IDLE_STATUS;
 
 String mqtt_server = "mqtt.imle.io";
-MQTTClient mqtt;
-void mqttCallback(MQTTClient *client, char topic[], char bytes[], int length);
+void mqttCallback(char *topic, byte *payload, unsigned int length);
+PubSubClient mqtt(mqtt_server.c_str(), 1883, mqttCallback, wifi);
 
 Relay *mixers[] = {&fan0, &fan1};
 
@@ -197,8 +219,6 @@ NutrientDosser dosser(DefaultFeedChart(),
                       pump_ph_up_reservoir, UP,
                       mixers, 2);
 
-StaticJsonDocument<200> doc;
-
 Pump *button_pump;
 bool is_dosing = false;
 
@@ -206,12 +226,22 @@ void setup() {
   Serial.begin(9600);
   while (!Serial) {}
 
-  if (!bme.begin()) {
-    Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
-    while (true);
+  Wire.begin();
+  while (!bme.begin()) {
+    Serial.println("Could not find BME280I2C sensor!");
+    delay(1000);
   }
 
-  Wire.begin();
+  switch (bme.chipModel()) {
+    case BME280::ChipModel_BME280:
+      Serial.println("Found BME280 sensor! Success.");
+      break;
+    case BME280::ChipModel_BMP280:
+      Serial.println("Found BMP280 sensor! No Humidity available.");
+      break;
+    default:
+      Serial.println("Found UNKNOWN sensor! Error!");
+  }
 
   pwm_driver.begin();
   pwm_driver.setPWMFreq(1600);
@@ -235,24 +265,12 @@ void setup() {
 
   String fv = WiFiClass::firmwareVersion();
   if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
-    Serial.println("Please upgrade the firmware");
+    Serial.println("Please upgrade the WiFiNina firmware");
   }
 
-  Serial.print("Attempting to connect to SSID: ");
-  Serial.println(ssid);
-  while (status != WL_CONNECTED) {
-    status = WiFi.begin(ssid, pass);
-    delay(10000);
-  }
-  Serial.println("Connected to wifi");
-
-  mqtt.begin(mqtt_server.c_str(), wifi);
-  mqtt.onMessageAdvanced(mqttCallback);
+  mqtt.setCallback(mqttCallback);
 
   connectMqttClient();
-
-  mqtt.subscribe(MQTT_TOPIC_IN_COMMAND);
-  mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
 #endif
 
 //  SoftTimer.add(&th_report_memory);
@@ -263,14 +281,19 @@ void setup() {
   SoftTimer.add(&th_check_state_changes_and_notify);
 
   button_debouncer.init();
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), pinChanged, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), []() { button_debouncer.pciHandleInterrupt(-1); }, CHANGE);
+
+  float_min_debouncer.init();
+  attachInterrupt(digitalPinToInterrupt(FLOAT_MIN_PIN), []() { float_min_debouncer.pciHandleInterrupt(-1); }, CHANGE);
+
+  float_max_debouncer.init();
+  attachInterrupt(digitalPinToInterrupt(FLOAT_MAX_PIN), []() { float_max_debouncer.pciHandleInterrupt(-1); }, CHANGE);
 }
 
-void pinChanged() {
-  button_debouncer.pciHandleInterrupt(-1);
-}
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "readability-non-const-parameter"
 
-void mqttCallback(MQTTClient *client, char topic[], char bytes[], int length) {
+void mqttCallback(char *topic, byte *payload, unsigned int length) {
 #ifndef DISABLE_SERIAL_DEBUG
   Serial.print(topic);
   Serial.print(" ");
@@ -280,16 +303,13 @@ void mqttCallback(MQTTClient *client, char topic[], char bytes[], int length) {
   Serial.println();
 #endif
 
-  DeserializationError error = deserializeJson(doc, bytes, length);
-  if (error != DeserializationError::Ok) {
-    Serial.println(error.c_str());
-    return;
-  }
-
   if (topic == MQTT_TOPIC_IN_STATUS) {
 
   }
+  // Reset position for the next message to be stored
 }
+
+#pragma clang diagnostic pop
 
 float basin_last_temperature = NAN;
 
@@ -391,20 +411,32 @@ bool createAndSendWaterSensorsMessage(Task *me) {
   Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
-  Serial.println(mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str()));
+  mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str().c_str());
 #endif
 }
 
 void connectMqttClient() {
+  if (!wifi.connected()) {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    while (status != WL_CONNECTED) {
+      status = WiFi.begin(ssid, pass);
+      delay(10000);
+    }
+    Serial.println("Connected to wifi");
+  }
+
   Serial.print("Attempting to connect to MQTT server at: ");
   Serial.println(mqtt_server);
-  if (!mqtt.connect(SECRET_MQTT_CLIENT_ID)) {
-//  if (!mqtt.connect(SECRET_MQTT_CLIENT_ID, SECRET_MQTT_USER, SECRET_MQTT_PASS)) {
-    Serial.println("Unable to authenticate against mqtt endpoint.");
-    Serial.println(mqtt.lastError());
-    while (true);
+  if (mqtt.connect(SECRET_MQTT_CLIENT_ID)) {
+    mqtt.subscribe(MQTT_TOPIC_IN_COMMAND);
+    mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
   }
-  Serial.println("Connected to mqtt server.");
+  if (!mqtt.connected()) {
+    Serial.println("Unable to authenticate against mqtt endpoint.");
+  } else {
+    Serial.println("Connected to mqtt server.");
+  }
 }
 
 PhysicalStates last_states;
@@ -516,6 +548,18 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
     last_states.fan1 = fan1.isOn();
     sml_fan1.set(last_states.fan1);
   }
+  if (last_states.float_min != float_min_state) {
+    sml_float_min.setUnit(SENML_UNIT_RATIO);
+    state.add(&sml_float_min);
+    last_states.float_min = float_min_state;
+    sml_float_min.set(last_states.float_min);
+  }
+  if (last_states.float_max != float_max_state) {
+    sml_float_max.setUnit(SENML_UNIT_RATIO);
+    state.add(&sml_float_max);
+    last_states.float_max = float_max_state;
+    sml_float_max.set(last_states.float_max);
+  }
 
   if (state.getFirst() != nullptr) {
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
@@ -529,22 +573,19 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
     Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
-    Serial.println(mqtt.publish(MQTT_TOPIC_OUT_ACTIONS, sml_string_stream.str()));
+    mqtt.publish(MQTT_TOPIC_OUT_ACTIONS, sml_string_stream.str().c_str());
 #endif
   }
 }
 
-sensors_event_t sensor_event;
+float temp, press, humid;
 
 void createAndSendBoxSensorMessage(Task *me) {
-  bme_temp->getEvent(&sensor_event);
-  box_temperature.set(sensor_event.temperature);
+  bme.read(temp, press, humid, BME280::TempUnit_Celsius, BME280::PresUnit_Pa);
 
-  bme_pressure->getEvent(&sensor_event);
-  box_pressure.set(sensor_event.pressure * 100); // read unit is hPa (*100 to get Pa)
-
-  bme_humidity->getEvent(&sensor_event);
-  box_humidity.set(sensor_event.relative_humidity);
+  box_temperature.set(temp);
+  box_pressure.set(press);
+  box_humidity.set(humid);
 
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
@@ -557,7 +598,7 @@ void createAndSendBoxSensorMessage(Task *me) {
   Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
-  Serial.println(mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str()));
+  mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str().c_str());
 #endif
 }
 
@@ -722,7 +763,6 @@ void buttonReleased(unsigned long pressTimespan) {
   // no action
 #endif
 }
-
 
 #ifdef __arm__
 // should use uinstd.h to define sbrk but Due causes a conflict

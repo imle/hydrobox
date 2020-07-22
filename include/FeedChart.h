@@ -15,6 +15,6 @@ struct FeedChart {
   FeedChartRegimen regimens[FeedChartRegimens];
 };
 
-FeedChart const * DefaultFeedChart();
+FeedChart const *DefaultFeedChart();
 
 #endif //HPCC_FEEDCHART_H

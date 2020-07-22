@@ -67,6 +67,6 @@ const FeedChart DefaultFeedChartVal{
     }
 };
 
-FeedChart const * DefaultFeedChart() {
+FeedChart const *DefaultFeedChart() {
   return &DefaultFeedChartVal;
 }
