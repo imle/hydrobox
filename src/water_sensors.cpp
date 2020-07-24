@@ -19,12 +19,12 @@ Task th_receive_sensor_readings(100, receiveAtlasSensorReadings);
 DelayRun th_create_and_send_water_sensor_message(0, createAndSendWaterSensorsMessage);
 
 SenMLPack sensors(SENML_BASE_NAME_SENSORS);
-SenMLFloatRecord sensors_ph_basin(F("basin:ph"), SENML_UNIT_PH);
-SenMLFloatRecord sensors_ec_basin(F("basin:ec"), SENML_UNIT_SIEMENS);
-SenMLFloatRecord sensors_temp_basin(F("basin:" SENML_NAME_TEMPERATURE), SENML_UNIT_DEGREES_CELSIUS);
-SenMLFloatRecord sensors_ph_reservoir(F("reservoir:ph"), SENML_UNIT_PH);
-SenMLFloatRecord sensors_ec_reservoir(F("reservoir:ec"), SENML_UNIT_SIEMENS);
-SenMLFloatRecord sensors_temp_reservoir(F("reservoir:" SENML_NAME_TEMPERATURE), SENML_UNIT_SIEMENS);
+SenMLFloatRecord sensors_ph_basin("basin:ph", SENML_UNIT_PH);
+SenMLFloatRecord sensors_ec_basin("basin:ec", SENML_UNIT_SIEMENS);
+SenMLFloatRecord sensors_temp_basin("basin:" SENML_NAME_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
+SenMLFloatRecord sensors_ph_reservoir("reservoir:ph", SENML_UNIT_PH);
+SenMLFloatRecord sensors_ec_reservoir("reservoir:ec", SENML_UNIT_SIEMENS);
+SenMLFloatRecord sensors_temp_reservoir("reservoir:" SENML_NAME_TEMPERATURE, SENML_UNIT_SIEMENS);
 
 static float basin_last_temperature = NAN;
 
@@ -32,9 +32,6 @@ void requestWaterSensorReadings(Task *me) {
   // If we don't have compensation yet, don't worry about it
   if (basin_last_temperature != NAN) {
     ezo_ec_basin.sendReadWithTempComp(basin_last_temperature);
-  } else {
-    // TODO: Ensure this will be ok
-    ezo_ec_basin.sendReadCmd();
   }
 
   ezo_ph_basin.sendReadCmd();

@@ -12,8 +12,6 @@
 #include <box.h>
 #include <float_sensors.h>
 #include <state.h>
-#include <secret/wifi.h>
-#include <secret/mqtt.h>
 
 void setup() {
   Serial.begin(9600);
@@ -29,13 +27,15 @@ void setup() {
 
   switch (bme.chipModel()) {
     case BME280::ChipModel_BME280:
-      Serial.println("Found BME280 sensor! Success.");
+      has_humidity = true;
       break;
     case BME280::ChipModel_BMP280:
-      Serial.println("Found BMP280 sensor! No Humidity available.");
+      has_humidity = false;
       break;
     default:
-      Serial.println("Found UNKNOWN sensor! Error!");
+      Serial.print("I2C device at 0x");
+      Serial.print(bme.getSettings().bme280Addr, HEX);
+      Serial.println(" is not BME280!");
       while (true);
   }
 
@@ -49,7 +49,9 @@ void setup() {
 
   box.add(box_temperature);
   box.add(box_pressure);
-  box.add(box_humidity);
+  if (has_humidity) {
+    box.add(box_humidity);
+  }
 
   button_pump = &pump_ph_down_basin;
 

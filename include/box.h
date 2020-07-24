@@ -13,6 +13,7 @@ extern SenMLFloatRecord box_pressure;
 extern SenMLFloatRecord box_humidity;
 
 extern BME280I2C bme;
+extern bool has_humidity;
 
 // Check the BME280 sensor in the control box
 void createAndSendBoxSensorMessage(Task *me);

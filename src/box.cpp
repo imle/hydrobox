@@ -30,12 +30,16 @@ BME280I2C::Settings bme_settings(
 
 BME280I2C bme(bme_settings);
 
+bool has_humidity;
+
 void createAndSendBoxSensorMessage(Task *me) {
   bme.read(temp, press, humid, BME280::TempUnit_Celsius, BME280::PresUnit_Pa);
 
   box_temperature.set(temp);
   box_pressure.set(press);
-  box_humidity.set(humid);
+  if (has_humidity) {
+    box_humidity.set(humid);
+  }
 
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
