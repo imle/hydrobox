@@ -2,7 +2,7 @@
 #define HPCC_BUTTON_ACTIONS_H
 
 #include <Debouncer.h>
-#include "Pump.h"
+#include <Pump.h>
 
 //#define BUTTON_HOLD_ON_MIXERS
 //#define BUTTON_HOLD_ON_PUMPS

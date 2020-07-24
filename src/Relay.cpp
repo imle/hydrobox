@@ -1,4 +1,4 @@
-#include "Relay.h"
+#include <Relay.h>
 
 
 Relay::Relay(pin_size_t pin, PinStatus off_state) : pin(pin), off_state(off_state) {

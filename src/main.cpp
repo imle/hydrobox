@@ -12,8 +12,8 @@
 #include <box.h>
 #include <float_sensors.h>
 #include <state.h>
-#include "secret/wifi.h"
-#include "secret/mqtt.h"
+#include <secret/wifi.h>
+#include <secret/mqtt.h>
 
 void setup() {
   Serial.begin(9600);

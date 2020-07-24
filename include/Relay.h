@@ -1,7 +1,7 @@
 #ifndef HPCC_RELAY_H
 #define HPCC_RELAY_H
 
-#include "Arduino.h"
+#include <Arduino.h>
 
 
 class Relay {
