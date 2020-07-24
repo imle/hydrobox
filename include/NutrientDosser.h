@@ -8,7 +8,6 @@
 
 const unsigned long MixTimeMS = 7000;
 const unsigned long SettleTimeMS = 2000;
-const double MilliliterToMilliseconds = 90.0 / (60.0 * 1000.0);
 
 #define DEBUG_NUTRIENT_DOSSER
 

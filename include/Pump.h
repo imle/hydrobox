@@ -5,6 +5,8 @@
 #include "Adafruit_PWMServoDriver.h"
 
 
+const double MilliliterToMilliseconds = 90.0 / (60.0 * 1000.0);
+
 const int KAddressEEPROMDefault = 8 * 16; // 128
 
 class Pump {

@@ -2,12 +2,10 @@
 #include "OneWire.h"
 
 
-#define PIN_DS18S20 4
-
 OneWire ds(PIN_DS18S20);
 
-// get temperature from one DS18S20 in DEG Celsius
-float getTemp() {
+// temperature in DEG Celsius
+float getReservoirTemp() {
   byte data[12];
   byte addr[8];
 
@@ -35,7 +33,6 @@ float getTemp() {
   ds.select(addr);
   ds.write(0xBE); // Read Scratchpad
 
-
   for (int i = 0; i < 9; i++) { // we need 9 bytes
     data[i] = ds.read();
   }
@@ -49,5 +46,4 @@ float getTemp() {
   float TemperatureSum = tempRead / 16;
 
   return TemperatureSum;
-
 }

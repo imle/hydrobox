@@ -1,0 +1,35 @@
+#ifndef HPCC_STATE_H
+#define HPCC_STATE_H
+
+#include <Task.h>
+#include <senml_pack.h>
+#include <senml_bool_record.h>
+
+
+// https://tools.ietf.org/html/rfc8428#section-12.1
+extern SenMLPack state;
+extern SenMLBoolRecord sml_pumps_locked_off;
+extern SenMLBoolRecord sml_pump_flora_micro;
+extern SenMLBoolRecord sml_pump_flora_gro;
+extern SenMLBoolRecord sml_pump_flora_bloom;
+extern SenMLBoolRecord sml_pump_ph_up_reservoir;
+extern SenMLBoolRecord sml_pump_ph_up_basin;
+extern SenMLBoolRecord sml_pump_ph_down_basin;
+extern SenMLBoolRecord sml_submersible_pump;
+extern SenMLBoolRecord sml_plant_lights;
+extern SenMLBoolRecord sml_air_mover;
+extern SenMLBoolRecord sml_bubbler;
+extern SenMLBoolRecord sml_r4;
+extern SenMLBoolRecord sml_r5;
+extern SenMLBoolRecord sml_r6;
+extern SenMLBoolRecord sml_r7;
+extern SenMLBoolRecord sml_fan0;
+extern SenMLBoolRecord sml_fan1;
+extern SenMLBoolRecord sml_float_min;
+extern SenMLBoolRecord sml_float_max;
+
+// Check for changed state of each relay and pump and publish a state change message if necessary
+void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
+extern Task th_check_state_changes_and_notify;
+
+#endif //HPCC_STATE_H

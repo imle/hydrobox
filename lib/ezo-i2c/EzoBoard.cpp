@@ -1,5 +1,5 @@
 
-#include "Ezo.h"
+#include "EzoBoard.h"
 #include "Arduino.h"
 #include "Wire.h"
 #include <stdlib.h>
