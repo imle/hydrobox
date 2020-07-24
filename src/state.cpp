@@ -42,117 +42,98 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
 
   // If any one pump is locked off, all of them are
   if (last_states.pumps_locked_off != (pump_flora_micro.state() == Pump::State::LOCKED_OFF)) {
-    sml_pump_flora_micro.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_flora_micro);
+    state.add(sml_pump_flora_micro);
     last_states.pumps_locked_off = pump_flora_micro.state() == Pump::State::LOCKED_OFF;
     sml_pumps_locked_off.set(last_states.pumps_locked_off);
   }
 
   if (last_states.pump_flora_micro != pump_flora_micro.isOn()) {
-    sml_pump_flora_micro.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_flora_micro);
+    state.add(sml_pump_flora_micro);
     last_states.pump_flora_micro = pump_flora_micro.isOn();
     sml_pump_flora_micro.set(last_states.pump_flora_micro);
   }
   if (last_states.pump_flora_gro != pump_flora_gro.isOn()) {
-    sml_pump_flora_gro.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_flora_gro);
+    state.add(sml_pump_flora_gro);
     last_states.pump_flora_gro = pump_flora_gro.isOn();
     sml_pump_flora_gro.set(last_states.pump_flora_gro);
   }
   if (last_states.pump_flora_bloom != pump_flora_bloom.isOn()) {
-    sml_pump_flora_bloom.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_flora_bloom);
+    state.add(sml_pump_flora_bloom);
     last_states.pump_flora_bloom = pump_flora_bloom.isOn();
     sml_pump_flora_bloom.set(last_states.pump_flora_bloom);
   }
   if (last_states.pump_ph_up_reservoir != pump_ph_up_reservoir.isOn()) {
-    sml_pump_ph_up_reservoir.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_ph_up_reservoir);
+    state.add(sml_pump_ph_up_reservoir);
     last_states.pump_ph_up_reservoir = pump_ph_up_reservoir.isOn();
     sml_pump_ph_up_reservoir.set(last_states.pump_ph_up_reservoir);
   }
   if (last_states.pump_ph_up_basin != pump_ph_up_basin.isOn()) {
-    sml_pump_ph_up_basin.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_ph_up_basin);
+    state.add(sml_pump_ph_up_basin);
     last_states.pump_ph_up_basin = pump_ph_up_basin.isOn();
     sml_pump_ph_up_basin.set(last_states.pump_ph_up_basin);
   }
   if (last_states.pump_ph_down_basin != pump_ph_down_basin.isOn()) {
-    sml_pump_ph_down_basin.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_pump_ph_down_basin);
+    state.add(sml_pump_ph_down_basin);
     last_states.pump_ph_down_basin = pump_ph_down_basin.isOn();
     sml_pump_ph_down_basin.set(last_states.pump_ph_down_basin);
   }
   if (last_states.submersible_pump != submersible_pump.isOn()) {
-    sml_submersible_pump.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_submersible_pump);
+    state.add(sml_submersible_pump);
     last_states.submersible_pump = submersible_pump.isOn();
     sml_submersible_pump.set(last_states.submersible_pump);
   }
   if (last_states.plant_lights != plant_lights.isOn()) {
-    sml_plant_lights.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_plant_lights);
+    state.add(sml_plant_lights);
     last_states.plant_lights = plant_lights.isOn();
     sml_plant_lights.set(last_states.plant_lights);
   }
   if (last_states.air_mover != air_mover.isOn()) {
-    sml_air_mover.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_air_mover);
+    state.add(sml_air_mover);
     last_states.air_mover = air_mover.isOn();
     sml_air_mover.set(last_states.air_mover);
   }
   if (last_states.bubbler != bubbler.isOn()) {
-    sml_bubbler.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_bubbler);
+    state.add(sml_bubbler);
     last_states.bubbler = bubbler.isOn();
     sml_bubbler.set(last_states.bubbler);
   }
   if (last_states.r4 != r4.isOn()) {
-    sml_r4.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_r4);
+    state.add(sml_r4);
     last_states.r4 = r4.isOn();
     sml_r4.set(last_states.r4);
   }
   if (last_states.r5 != r5.isOn()) {
-    sml_r5.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_r5);
+    state.add(sml_r5);
     last_states.r5 = r5.isOn();
     sml_r5.set(last_states.r5);
   }
   if (last_states.r6 != r6.isOn()) {
-    sml_r6.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_r6);
+    state.add(sml_r6);
     last_states.r6 = r6.isOn();
     sml_r6.set(last_states.r6);
   }
   if (last_states.r7 != r7.isOn()) {
-    sml_r7.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_r7);
+    state.add(sml_r7);
     last_states.r7 = r7.isOn();
     sml_r7.set(last_states.r7);
   }
   if (last_states.fan0 != fan0.isOn()) {
-    sml_fan0.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_fan0);
+    state.add(sml_fan0);
     last_states.fan0 = fan0.isOn();
     sml_fan0.set(last_states.fan0);
   }
   if (last_states.fan1 != fan1.isOn()) {
-    sml_fan1.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_fan1);
+    state.add(sml_fan1);
     last_states.fan1 = fan1.isOn();
     sml_fan1.set(last_states.fan1);
   }
   if (last_states.float_min != float_min_state) {
-    sml_float_min.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_float_min);
+    state.add(sml_float_min);
     last_states.float_min = float_min_state;
     sml_float_min.set(last_states.float_min);
   }
   if (last_states.float_max != float_max_state) {
-    sml_float_max.setUnit(SENML_UNIT_RATIO);
-    state.add(&sml_float_max);
+    state.add(sml_float_max);
     last_states.float_max = float_max_state;
     sml_float_max.set(last_states.float_max);
   }
@@ -160,7 +141,7 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
   if (state.getFirst() != nullptr) {
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
     StringStream sml_string_stream;
-    state.toJson(&sml_string_stream);
+    state.toJson(sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
     Serial.print(MQTT_TOPIC_OUT_ACTIONS " ");

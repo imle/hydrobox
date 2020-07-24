@@ -47,9 +47,9 @@ void setup() {
     pwm_driver.setPin(i, 0);
   }
 
-  box.add(&box_temperature);
-  box.add(&box_pressure);
-  box.add(&box_humidity);
+  box.add(box_temperature);
+  box.add(box_pressure);
+  box.add(box_humidity);
 
   button_pump = &pump_ph_down_basin;
 

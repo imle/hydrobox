@@ -11,9 +11,9 @@
 Task th_publish_box_sensor_readings(15000, createAndSendBoxSensorMessage);
 
 SenMLPack box(SENML_BASE_NAME_BOX);
-SenMLFloatRecord box_temperature(KPN_SENML_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
-SenMLFloatRecord box_pressure(KPN_SENML_PRESSURE, SENML_UNIT_PASCAL);
-SenMLFloatRecord box_humidity(KPN_SENML_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
+SenMLFloatRecord box_temperature(SENML_NAME_TEMPERATURE, SENML_UNIT_DEGREES_CELSIUS);
+SenMLFloatRecord box_pressure(SENML_NAME_PRESSURE, SENML_UNIT_PASCAL);
+SenMLFloatRecord box_humidity(SENML_NAME_HUMIDITY, SENML_UNIT_RELATIVE_HUMIDITY);
 
 float temp, press, humid;
 
@@ -39,7 +39,7 @@ void createAndSendBoxSensorMessage(Task *me) {
 
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
-  box.toJson(&sml_string_stream);
+  box.toJson(sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
   Serial.print(MQTT_TOPIC_OUT_SENSORS " ");

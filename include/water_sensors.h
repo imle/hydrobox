@@ -5,8 +5,7 @@
 #include <Task.h>
 #include <DelayRun.h>
 #include <GravityTDS.h>
-#include <senml_pack.h>
-#include <kpn_senml.h>
+#include <thingsml.h>
 
 
 extern GravityTDS tds;

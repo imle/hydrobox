@@ -2,8 +2,7 @@
 #define HPCC_STATE_H
 
 #include <Task.h>
-#include <senml_pack.h>
-#include <senml_bool_record.h>
+#include <thingsml.h>
 
 
 // https://tools.ietf.org/html/rfc8428#section-12.1

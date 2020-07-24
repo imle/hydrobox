@@ -21,10 +21,10 @@ DelayRun th_create_and_send_water_sensor_message(0, createAndSendWaterSensorsMes
 SenMLPack sensors(SENML_BASE_NAME_SENSORS);
 SenMLFloatRecord sensors_ph_basin(F("basin:ph"), SENML_UNIT_PH);
 SenMLFloatRecord sensors_ec_basin(F("basin:ec"), SENML_UNIT_SIEMENS);
-SenMLFloatRecord sensors_temp_basin(F("basin:" KPN_SENML_TEMPERATURE), SENML_UNIT_DEGREES_CELSIUS);
+SenMLFloatRecord sensors_temp_basin(F("basin:" SENML_NAME_TEMPERATURE), SENML_UNIT_DEGREES_CELSIUS);
 SenMLFloatRecord sensors_ph_reservoir(F("reservoir:ph"), SENML_UNIT_PH);
 SenMLFloatRecord sensors_ec_reservoir(F("reservoir:ec"), SENML_UNIT_SIEMENS);
-SenMLFloatRecord sensors_temp_reservoir(F("reservoir:" KPN_SENML_TEMPERATURE), SENML_UNIT_SIEMENS);
+SenMLFloatRecord sensors_temp_reservoir(F("reservoir:" SENML_NAME_TEMPERATURE), SENML_UNIT_SIEMENS);
 
 static float basin_last_temperature = NAN;
 
@@ -92,33 +92,27 @@ bool createAndSendWaterSensorsMessage(Task *me) {
   sensors.clear();
 
   if (ezo_ph_basin.getError() == EzoBoard::SUCCESS) {
-    sensors.add(&sensors_ph_basin);
-    sensors_ph_basin.setUnit(SENML_UNIT_PH);
+    sensors.add(sensors_ph_basin);
     sensors_ph_basin.set(ezo_ph_basin.getLastReceivedReading());
   }
   if (ezo_temp_basin.getError() == EzoBoard::SUCCESS) {
-    sensors.add(&sensors_temp_basin);
-    sensors_temp_basin.setUnit(SENML_UNIT_DEGREES_CELSIUS);
+    sensors.add(sensors_temp_basin);
     sensors_temp_basin.set(ezo_temp_basin.getLastReceivedReading());
   }
   if (ezo_ph_reservoir.getError() == EzoBoard::SUCCESS) {
-    sensors.add(&sensors_ph_reservoir);
-    sensors_ph_reservoir.setUnit(SENML_UNIT_PH);
+    sensors.add(sensors_ph_reservoir);
     sensors_ph_reservoir.set(ezo_ph_reservoir.getLastReceivedReading());
   }
   if (ezo_ec_basin.getError() == EzoBoard::SUCCESS) {
-    sensors.add(&sensors_ec_basin);
-    sensors_ec_basin.setUnit(SENML_UNIT_SIEMENS);
+    sensors.add(sensors_ec_basin);
     sensors_ec_basin.set(ezo_ec_basin.getLastReceivedReading());
   }
 
   float res_temp = getReservoirTemp();
-  sensors.add(&sensors_temp_reservoir);
-  sensors_temp_reservoir.setUnit(SENML_UNIT_DEGREES_CELSIUS);
+  sensors.add(sensors_temp_reservoir);
   sensors_temp_reservoir.set(res_temp);
   tds.setTemperature(res_temp);
-  sensors.add(&sensors_ec_reservoir);
-  sensors_ec_reservoir.setUnit(SENML_UNIT_SIEMENS);
+  sensors.add(sensors_ec_reservoir);
   sensors_ec_reservoir.set(tds.getEcValue());
 
   // Necessary for the ec meter
@@ -126,7 +120,7 @@ bool createAndSendWaterSensorsMessage(Task *me) {
 
 #if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
   StringStream sml_string_stream;
-  sensors.toJson(&sml_string_stream);
+  sensors.toJson(sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
   Serial.print(MQTT_TOPIC_OUT_SENSORS " ");

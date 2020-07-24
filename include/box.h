@@ -3,8 +3,7 @@
 
 #include <Task.h>
 #include <BME280I2C.h>
-#include <senml_pack.h>
-#include <kpn_senml.h>
+#include <thingsml.h>
 
 
 // https://tools.ietf.org/html/rfc8428#section-12.1
