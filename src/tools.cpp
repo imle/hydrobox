@@ -10,14 +10,14 @@ Pump pump_ph_up_reservoir(&pwm_driver, 3, KAddressEEPROMDefault + 8 * 6); //    
 Pump pump_ph_up_basin(&pwm_driver, 4, KAddressEEPROMDefault + 8 * 8);     //        | k=3730
 Pump pump_ph_down_basin(&pwm_driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom | k=3750
 
-Relay submersible_pump(1, HIGH); // Left  | Plug BL | Water Pump
-Relay plant_lights(0, HIGH);     //       | Plug TL | Plant Lights
-Relay air_mover(4, HIGH);        //       | Plug TR | Air Mover
-Relay bubbler(A1, HIGH);         //       | Plug BR | Bubbler
-Relay r4(A2, HIGH);              //       |
-Relay r5(A3, HIGH);              //       |
-Relay r6(A4, HIGH);              //       |
-Relay r7(A5, HIGH);              // Right |
+Relay submersible_pump(A5, HIGH); // Left  | Plug BL | Water Pump
+Relay plant_lights(A4, HIGH);     //       | Plug TL | Plant Lights
+Relay air_mover(A3, HIGH);        //       | Plug BR | Air Mover
+Relay bubbler(A2, HIGH);          //       | Plug TR | Bubbler
+Relay r4(A1, HIGH);               //       |
+Relay r5(4, HIGH);                //       |
+Relay r6(0, HIGH);                //       |
+Relay r7(1, HIGH);                // Right |
 
 Relay fan0(12, LOW);
 Relay fan1(13, LOW);

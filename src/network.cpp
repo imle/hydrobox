@@ -6,7 +6,7 @@ extern char pass[] = SECRET_PASS;
 
 WiFiClient wifi;
 
-String mqtt_server = "mqtt.imle.io";
+String mqtt_server = "10.0.100.4";
 uint8_t status = WL_IDLE_STATUS;
 
 Task th_run_mqtt_loop(100, runMqttLoop);
@@ -41,7 +41,7 @@ void connectMqttClient() {
 
   Serial.print("Attempting to connect to MQTT server at: ");
   Serial.println(mqtt_server);
-  if (mqtt.connect(SECRET_MQTT_CLIENT_ID)) {
+  if (mqtt.connect(SECRET_MQTT_CLIENT_ID, SECRET_MQTT_USER, SECRET_MQTT_PASS)) {
     mqtt.subscribe(MQTT_TOPIC_IN_COMMAND);
     mqtt.subscribe(MQTT_TOPIC_IN_STATUS);
   }

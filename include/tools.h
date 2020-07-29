@@ -18,8 +18,8 @@ extern Pump pump_ph_down_basin;   // Bottom | k=3750
 
 extern Relay submersible_pump; // Left  | Plug BL | Water Pump
 extern Relay plant_lights;     //       | Plug TL | Plant Lights
-extern Relay air_mover;        //       | Plug TR | Air Mover
-extern Relay bubbler;          //       | Plug BR | Bubbler
+extern Relay air_mover;        //       | Plug BR | Air Mover
+extern Relay bubbler;          //       | Plug TR | Bubbler
 extern Relay r4;               //       |
 extern Relay r5;               //       |
 extern Relay r6;               //       |
