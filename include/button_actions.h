@@ -12,7 +12,7 @@
 
 extern Pump *button_pump;
 
-#define BUTTON_PIN 2
+#define BUTTON_PIN 5
 extern Debouncer button_debouncer;
 
 void buttonPressed();

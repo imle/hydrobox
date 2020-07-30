@@ -9,7 +9,7 @@
 #include <constants/mqtt.h>
 
 
-#define DISABLE_NET
+//#define DISABLE_NET
 //#define DISABLE_SERIAL_DEBUG
 
 extern char ssid[];

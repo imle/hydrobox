@@ -16,11 +16,11 @@ Relay air_mover(A3, HIGH);        //       | Plug BR | Air Mover
 Relay bubbler(A2, HIGH);          //       | Plug TR | Bubbler
 Relay r4(A1, HIGH);               //       |
 Relay r5(4, HIGH);                //       |
-Relay r6(0, HIGH);                //       |
-Relay r7(1, HIGH);                // Right |
+Relay r6(2, HIGH);                //       |
+Relay r7(3, HIGH);                // Right |
 
-Relay fan0(12, LOW);
-Relay fan1(13, LOW);
+Relay fan0(10, LOW);
+Relay fan1(11, LOW);
 
 Task th_check_if_offables_should_off(50, checkIfToolsShouldOff);
 

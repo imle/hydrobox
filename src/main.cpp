@@ -69,6 +69,8 @@ void setup() {
   mqtt.setCallback(mqttCallback);
 
   connectMqttClient();
+
+  Serial.println(WiFi.getTime());
 #endif
 
 //  SoftTimer.add(&th_report_memory);

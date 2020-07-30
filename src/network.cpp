@@ -6,7 +6,7 @@ extern char pass[] = SECRET_PASS;
 
 WiFiClient wifi;
 
-String mqtt_server = "10.0.100.4";
+String mqtt_server = "mqtt.imle.io";
 uint8_t status = WL_IDLE_STATUS;
 
 Task th_run_mqtt_loop(100, runMqttLoop);
