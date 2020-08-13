@@ -120,12 +120,12 @@ bool createAndSendWaterSensorsMessage(Task *me) {
   sensors.toJson(sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
-  Serial.print(MQTT_TOPIC_OUT_SENSORS " ");
+  Serial.print(MQTT_TOPIC_OUT_BASIN " ");
   Serial.print(millis());
   Serial.print(" ");
   Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
-  mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str().c_str());
+  mqtt.publish(MQTT_TOPIC_OUT_BASIN, sml_string_stream.str().c_str());
 #endif
 }

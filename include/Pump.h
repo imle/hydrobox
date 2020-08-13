@@ -2,7 +2,7 @@
 #define HPCC_PUMP_H
 
 #include <Arduino.h>
-#include <Adafruit_PWMServoDriver.h>
+#include <PCA9685.h>
 
 
 const double MilliliterToMilliseconds = 90.0 / (60.0 * 1000.0);
@@ -19,7 +19,7 @@ class Pump {
     DELAYED_OFF,
   };
  protected:
-  Adafruit_PWMServoDriver *driver; // If this is not null it will be used as the output driver
+  PCA9685 *driver; // If this is not null it will be used as the output driver
   pin_size_t pin;                  // Output PWM pin to turn on the pump
   bool is_on{false};               // Current state of the pump
   uint16_t k;                      // Value used for calibration (0 - 255)
@@ -32,8 +32,8 @@ class Pump {
  public:
   Pump(pin_size_t pin);
   Pump(pin_size_t pin, int k_address_eeprom);
-  Pump(Adafruit_PWMServoDriver *driver, pin_size_t pin);
-  Pump(Adafruit_PWMServoDriver *driver, pin_size_t pin, int k_address_eeprom);
+  Pump(PCA9685 *driver, pin_size_t pin);
+  Pump(PCA9685 *driver, pin_size_t pin, int k_address_eeprom);
 
   State on();
   void off(bool emergency = false);

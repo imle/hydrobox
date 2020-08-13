@@ -18,16 +18,16 @@ Pump::Pump(pin_size_t pin, int k_address_eeprom) : pin(pin), k_address_eeprom(k_
   this->k = val;
 }
 
-Pump::Pump(Adafruit_PWMServoDriver *driver, pin_size_t pin)
+Pump::Pump(PCA9685 *driver, pin_size_t pin)
     : driver(driver), pin(pin), k_address_eeprom(KAddressEEPROMDefault) {
-  this->driver->setPin(this->pin, 0);
+  this->driver->getPin(this->pin).fullOffAndWrite();
 
   EEPROM.get(this->k_address_eeprom, this->k);
 }
 
-Pump::Pump(Adafruit_PWMServoDriver *driver, pin_size_t pin, int k_address_eeprom)
+Pump::Pump(PCA9685 *driver, pin_size_t pin, int k_address_eeprom)
     : driver(driver), pin(pin), k_address_eeprom(k_address_eeprom) {
-  this->driver->setPin(this->pin, 0);
+  this->driver->getPin(this->pin).fullOffAndWrite();
 
   EEPROM.get(this->k_address_eeprom, this->k);
 }
@@ -43,7 +43,7 @@ Pump::State Pump::on() {
   this->is_on = true;
   if (this->driver != nullptr) {
     Serial.println("driver");
-    this->driver->setPin(this->pin, this->k);
+    this->driver->getPin(this->pin).setValueAndWrite(this->k);
   } else {
     analogWrite(this->pin, (uint8_t) this->k);
   }
@@ -70,7 +70,7 @@ void Pump::off(bool emergency) {
   this->on_async = false;
   this->is_on = false;
   if (this->driver != nullptr) {
-    this->driver->setPin(this->pin, 0);
+    this->driver->getPin(this->pin).fullOffAndWrite();
   } else {
     analogWrite(this->pin, 0);
   }

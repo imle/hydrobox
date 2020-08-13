@@ -1,7 +1,7 @@
 #include <tools.h>
 
 
-Adafruit_PWMServoDriver pwm_driver;
+PCA9685 pwm_driver;
 
 Pump pump_flora_micro(&pwm_driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    | k=3950
 Pump pump_flora_gro(&pwm_driver, 1, KAddressEEPROMDefault + 8 * 2);       //        | k=3660

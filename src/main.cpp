@@ -12,6 +12,8 @@
 #include <box.h>
 #include <float_sensors.h>
 #include <state.h>
+#include <sump.h>
+
 
 void setup() {
   Serial.begin(9600);
@@ -39,21 +41,20 @@ void setup() {
       while (true);
   }
 
-  pwm_driver.begin();
-  pwm_driver.setPWMFreq(1600);
+  pwm_driver.setup();
+  pwm_driver.setFrequency(1600);
 
   // Shut off all pins on the driver in case they may be on.
   for (int i = 0; i < 16; ++i) {
-    pwm_driver.setPin(i, 0);
+    pwm_driver.getPin(i).fullOff();
   }
+  pwm_driver.writeAllPins();
 
   box.add(box_temperature);
   box.add(box_pressure);
   if (has_humidity) {
     box.add(box_humidity);
   }
-
-  button_pump = &pump_ph_down_basin;
 
 #ifndef DISABLE_NET
   if (WiFi.status() == WL_NO_MODULE) {
@@ -67,6 +68,7 @@ void setup() {
   }
 
   mqtt.setCallback(mqttCallback);
+  mqtt.setBufferSize(350);
 
   connectMqttClient();
 
@@ -75,6 +77,7 @@ void setup() {
 
 //  SoftTimer.add(&th_report_memory);
   SoftTimer.add(&th_run_mqtt_loop);
+  SoftTimer.add(&th_check_pump_state);
   SoftTimer.add(&th_request_sensor_readings);
   SoftTimer.add(&th_publish_box_sensor_readings);
   SoftTimer.add(&th_check_if_offables_should_off);

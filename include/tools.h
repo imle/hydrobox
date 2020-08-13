@@ -6,7 +6,7 @@
 #include <Relay.h>
 
 
-extern Adafruit_PWMServoDriver pwm_driver;
+extern PCA9685 pwm_driver;
 
 // k values are calculated @ 13.3V (on regulator)
 extern Pump pump_flora_micro;     // Top    | k=3950

@@ -33,7 +33,7 @@ BME280I2C bme(bme_settings);
 bool has_humidity;
 
 void createAndSendBoxSensorMessage(Task *me) {
-  bme.read(temp, press, humid, BME280::TempUnit_Celsius, BME280::PresUnit_Pa);
+  bme.read(press, temp, humid, BME280::TempUnit_Celsius, BME280::PresUnit_Pa);
 
   box_temperature.set(temp);
   box_pressure.set(press);
@@ -46,12 +46,12 @@ void createAndSendBoxSensorMessage(Task *me) {
   box.toJson(sml_string_stream);
 #endif
 #ifndef DISABLE_SERIAL_DEBUG
-  Serial.print(MQTT_TOPIC_OUT_SENSORS " ");
+  Serial.print(MQTT_TOPIC_OUT_BOX " ");
   Serial.print(millis());
   Serial.print(" ");
   Serial.println(sml_string_stream.str());
 #endif
 #ifndef DISABLE_NET
-  mqtt.publish(MQTT_TOPIC_OUT_SENSORS, sml_string_stream.str().c_str());
+  mqtt.publish(MQTT_TOPIC_OUT_BOX, sml_string_stream.str().c_str());
 #endif
 }
