@@ -2,21 +2,14 @@
 #define HPCC_BOX_H
 
 #include <Task.h>
-#include <BME280I2C.h>
+#include <Adafruit_BME280.h>
 #include <thingsml.h>
 
+extern Adafruit_BME280 bme;
 
-// https://tools.ietf.org/html/rfc8428#section-12.1
-extern SenMLPack box;
-extern SenMLFloatRecord box_temperature;
-extern SenMLFloatRecord box_pressure;
-extern SenMLFloatRecord box_humidity;
+// Check the BME280 sensor in the control pack_box
+extern Task task_publish_box_sensor_readings;
 
-extern BME280I2C bme;
-extern bool has_humidity;
-
-// Check the BME280 sensor in the control box
-void createAndSendBoxSensorMessage(Task *me);
-extern Task th_publish_box_sensor_readings;
+bool setupAndCheckBoxHardware();
 
 #endif //HPCC_BOX_H

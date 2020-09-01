@@ -1,8 +1,8 @@
 #ifndef HPCC_PIN_ASSIGNMENT_H
 #define HPCC_PIN_ASSIGNMENT_H
 
-#define PIN_             0
-#define PIN_             1
+//#define PIN_             0
+//#define PIN_             1
 #define PIN_R6           2
 #define PIN_R7           3
 #define PIN_R5           4
@@ -14,7 +14,7 @@
 #define PIN_FAN1        10
 #define PIN_DS18S20     11
 #define PIN_RAIL_VALVES 12
-#define PIN_            13
+//#define PIN_            13
 
 #define PIN_TDS_SENSOR       A0
 #define PIN_R4               A1

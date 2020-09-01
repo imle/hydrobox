@@ -1,7 +1,5 @@
-#ifndef HPCC_MQTT_H
-#define HPCC_MQTT_H
-
-#define MQTT_SERVER "10.0.0.9"
+#ifndef HPCC_CONSTANTS_MQTT_H
+#define HPCC_CONSTANTS_MQTT_H
 
 #define MQTT_TOPIC_PREFIX "hydrobox."
 #define MQTT_TOPIC_IN_PREFIX MQTT_TOPIC_PREFIX "in."
@@ -12,7 +10,5 @@
 #define MQTT_TOPIC_OUT_BOX MQTT_TOPIC_OUT_PREFIX "sensor.box"
 #define MQTT_TOPIC_OUT_BASIN MQTT_TOPIC_OUT_PREFIX "sensor.basin"
 #define MQTT_TOPIC_OUT_ACTIONS MQTT_TOPIC_OUT_PREFIX "action"
-//#define MQTT_TOPIC_OUT_BOX "channels/5088d1be-5633-434a-a92b-5651413fa186/messages"
-//#define MQTT_TOPIC_OUT_BASIN "channels/messages"
 
-#endif //HPCC_MQTT_H
+#endif //HPCC_CONSTANTS_MQTT_H

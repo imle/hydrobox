@@ -7,7 +7,6 @@
 
 // https://tools.ietf.org/html/rfc8428#section-12.1
 extern SenMLPack state;
-extern SenMLBoolRecord sml_pumps_locked_off;
 extern SenMLBoolRecord sml_pump_flora_micro;
 extern SenMLBoolRecord sml_pump_flora_gro;
 extern SenMLBoolRecord sml_pump_flora_bloom;
@@ -30,7 +29,6 @@ extern SenMLBoolRecord sml_float_min;
 extern SenMLBoolRecord sml_float_max;
 
 // Check for changed state of each relay and pump and publish a state change message if necessary
-void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
-extern Task th_check_state_changes_and_notify;
+extern Task task_check_state_changes_and_notify;
 
 #endif //HPCC_STATE_H

@@ -66,7 +66,3 @@ const FeedChart DefaultFeedChartVal{
         },
     }
 };
-
-FeedChart const *DefaultFeedChart() {
-  return &DefaultFeedChartVal;
-}

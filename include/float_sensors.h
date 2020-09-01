@@ -11,4 +11,6 @@ extern Debouncer float_rails_debouncer;
 extern Debouncer float_min_debouncer;
 extern Debouncer float_max_debouncer;
 
+void setupFloatSensors();
+
 #endif //HPCC_FLOAT_SENSORS_H

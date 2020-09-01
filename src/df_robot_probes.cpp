@@ -1,28 +1,33 @@
-#include <df.h>
+#include <df_robot_probes.h>
 #include <OneWire.h>
 #include <pin_assignment.h>
+#include <debug.h>
 
 
 OneWire ds(PIN_DS18S20);
 
 // temperature in DEG Celsius
 float getReservoirTemp() {
+  FUNC_IN
   byte data[12];
   byte addr[8];
 
   if (!ds.search(addr)) {
     //no more sensors on chain, reset search
     ds.reset_search();
+    FUNC_OUT
     return -1000;
   }
 
   if (OneWire::crc8(addr, 7) != addr[7]) {
     Serial.println("DS18S20 CRC is not valid!");
+    FUNC_OUT
     return -1000;
   }
 
   if (addr[0] != 0x10 && addr[0] != 0x28) {
     Serial.print("DS18S20 is not recognized");
+    FUNC_OUT
     return -1000;
   }
 
@@ -46,5 +51,6 @@ float getReservoirTemp() {
   float tempRead = MSB << 8 | LSB; // using two's compliment
   float TemperatureSum = tempRead / 16;
 
+  FUNC_OUT
   return TemperatureSum;
 }

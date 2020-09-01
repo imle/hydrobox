@@ -16,8 +16,6 @@ extern bool thing_on;
 
 extern Debouncer button_debouncer;
 
-void buttonPressed();
-
-void buttonReleased(unsigned long pressTimespan);
+void setupButtonAction();
 
 #endif //HPCC_BUTTON_ACTIONS_H

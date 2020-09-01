@@ -20,38 +20,6 @@ Relay r5(PIN_R5, HIGH);                             //       |
 Relay r6(PIN_R6, HIGH);                             //       |
 Relay r7(PIN_R7, HIGH);                             // Right |
 
-Relay fan0(PIN_FAN0, LOW);
-Relay fan1(PIN_FAN1, LOW);
+Relay mixers(PIN_FAN0, LOW);
 
 Relay rail_valves(PIN_RAIL_VALVES, LOW);
-
-Task th_check_if_offables_should_off(50, checkIfToolsShouldOff);
-
-void checkIfToolsShouldOff(Task *me) {
-  pump_flora_micro.checkShouldOff();
-  pump_flora_gro.checkShouldOff();
-  pump_flora_bloom.checkShouldOff();
-  pump_ph_up_reservoir.checkShouldOff();
-  pump_ph_up_basin.checkShouldOff();
-  pump_ph_down_basin.checkShouldOff();
-
-  submersible_pump.checkShouldOff();
-  plant_lights.checkShouldOff();
-  air_mover.checkShouldOff();
-  bubbler.checkShouldOff();
-  r4.checkShouldOff();
-  r5.checkShouldOff();
-  r6.checkShouldOff();
-  r7.checkShouldOff();
-
-  fan0.checkShouldOff();
-  fan1.checkShouldOff();
-
-  rail_valves.checkShouldOff();
-
-#if defined(BUTTON_TOGGLE_CALIBRATOR)
-  if (button_pump != nullptr && !button_pump->isOn()) {
-    is_dosing = false;
-  }
-#endif
-}

@@ -1,16 +1,25 @@
 #include <button_actions.h>
 #include <pin_assignment.h>
-#include <dossing.h>
+#include <tools.h>
+#include <debug.h>
 
 
 Pump *button_pump = nullptr;
 bool thing_on = false;
 
+void buttonPressed();
+void buttonReleased(unsigned long pressTimespan);
 Debouncer button_debouncer(PIN_BUTTON, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
 
 Relay *relays[] = {&submersible_pump, &plant_lights};
 
+void setupButtonAction() {
+  button_debouncer.init();
+  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), []() { button_debouncer.pciHandleInterrupt(-1); }, CHANGE);
+}
+
 void buttonPressed() {
+  FUNC_IN
 #if defined(BUTTON_HOLD_ON_RELAYS)
   for (auto & relay : relays) {
     relay->on();
@@ -54,9 +63,11 @@ void buttonPressed() {
     th_start_mix_nutrients.startDelayed();
   }
 #endif
+  FUNC_OUT
 }
 
 void buttonReleased(unsigned long pressTimespan) {
+  FUNC_IN
 #if defined(BUTTON_HOLD_ON_RELAYS)
   for (auto & relay : relays) {
     relay->off();
@@ -76,4 +87,5 @@ void buttonReleased(unsigned long pressTimespan) {
 #elif defined(BUTTON_START_DOSE)
   // no action
 #endif
+  FUNC_OUT
 }

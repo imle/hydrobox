@@ -1,4 +1,5 @@
 #include <Relay.h>
+#include <debug.h>
 
 
 Relay::Relay(int pin, int off_state) : pin(pin), off_state(off_state) {
@@ -7,54 +8,19 @@ Relay::Relay(int pin, int off_state) : pin(pin), off_state(off_state) {
 }
 
 void Relay::on() {
+  FUNC_IN
   this->is_on = true;
   digitalWrite(this->pin, this->off_state == LOW ? HIGH : LOW);
-}
-
-bool Relay::on(unsigned long ms) {
-  if (this->delay_on > millis()) {
-    return false;
-  }
-
-  this->on_for_ms = millis() + ms;
-  this->on_async = false;
-  this->on();
-
-  return true;
+  FUNC_OUT
 }
 
 void Relay::off() {
-  this->on_async = false;
+  FUNC_IN
   this->is_on = false;
   digitalWrite(this->pin, this->off_state == LOW ? LOW : HIGH);
-}
-
-bool Relay::checkShouldOff() {
-  if (!this->isOn()) {
-    return false;
-  }
-
-  if (!this->on_async) {
-    return false;
-  }
-
-  if (this->on_for_ms > millis()) {
-    return false;
-  }
-
-  this->off();
-
-  return true;
+  FUNC_OUT
 }
 
 bool Relay::isOn() const {
   return this->is_on;
-}
-
-void Relay::delayNextOn(unsigned long ms) {
-  this->delay_on = millis() + ms;
-}
-
-void Relay::cancelDelay() {
-  this->delay_on = 0;
 }

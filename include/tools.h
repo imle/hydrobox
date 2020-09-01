@@ -25,8 +25,7 @@ extern Relay r5;               //       |
 extern Relay r6;               //       |
 extern Relay r7;               // Right |
 
-extern Relay fan0;
-extern Relay fan1;
+extern Relay mixers;
 
 extern Relay rail_valves;
 

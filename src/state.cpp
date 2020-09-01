@@ -2,12 +2,13 @@
 
 #include <PhysicalStates.h>
 #include <float_sensors.h>
-#include <network.h>
 #include <tools.h>
+#include <mqtt_publish.h>
+#include <constants/mqtt.h>
+#include <debug.h>
 
 
 SenMLPack state("urn:ctrl:state:");
-SenMLBoolRecord sml_pumps_locked_off("pumps_locked_off", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_micro("pump_flora_micro", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_gro("pump_flora_gro", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_pump_flora_bloom("pump_flora_bloom", SENML_UNIT_RATIO);
@@ -22,14 +23,14 @@ SenMLBoolRecord sml_r4("r4", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r5("r5", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r6("r6", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_r7("r7", SENML_UNIT_RATIO);
-SenMLBoolRecord sml_fan0("fan0", SENML_UNIT_RATIO);
-SenMLBoolRecord sml_fan1("fan1", SENML_UNIT_RATIO);
+SenMLBoolRecord sml_fan0("mixers", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_rail_valves("rail_valves", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_float_rails("float_rails", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_float_min("float_min", SENML_UNIT_RATIO);
 SenMLBoolRecord sml_float_max("float_max", SENML_UNIT_RATIO);
 
-Task th_check_state_changes_and_notify(100, checkStateChangesAndSendUpdateMessageIfNecessary);
+void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me);
+Task task_check_state_changes_and_notify(100, checkStateChangesAndSendUpdateMessageIfNecessary);
 
 PhysicalStates last_states;
 
@@ -45,10 +46,8 @@ void setLastState(SenMLPack &pack, SenMLBoolRecord &record, const bool current_s
 }
 
 void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
+  FUNC_IN
   state.clear();
-
-  // If any one pump is locked off, all of them are
-  setLastState(state, sml_pumps_locked_off, pump_flora_micro.state() == Pump::State::LOCKED_OFF, last_states.pumps_locked_off);
 
   setLastState(state, sml_pump_flora_micro, pump_flora_micro.isOn(), last_states.pump_flora_micro);
   setLastState(state, sml_pump_flora_gro, pump_flora_gro.isOn(), last_states.pump_flora_gro);
@@ -64,16 +63,16 @@ void checkStateChangesAndSendUpdateMessageIfNecessary(Task *me) {
   setLastState(state, sml_r5, r5.isOn(), last_states.r5);
   setLastState(state, sml_r6, r6.isOn(), last_states.r6);
   setLastState(state, sml_r7, r7.isOn(), last_states.r7);
-  setLastState(state, sml_fan0, fan0.isOn(), last_states.fan0);
-  setLastState(state, sml_fan1, fan1.isOn(), last_states.fan1);
+  setLastState(state, sml_fan0, mixers.isOn(), last_states.mixers);
   setLastState(state, sml_rail_valves, rail_valves.isOn(), last_states.rail_valves);
-  setLastState(state, sml_float_rails, float_rails_state, last_states.float_min);
+  setLastState(state, sml_float_rails, float_rails_state, last_states.float_rails);
   setLastState(state, sml_float_min, float_min_state, last_states.float_min);
   setLastState(state, sml_float_max, float_max_state, last_states.float_max);
 
   if (state.getFirst() != nullptr) {
     printAndPublish(MQTT_TOPIC_OUT_ACTIONS, state);
   }
+  FUNC_OUT
 }
 
 #pragma clang diagnostic pop

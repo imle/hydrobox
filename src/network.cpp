@@ -1,86 +1,78 @@
 #include <network.h>
-#include <StringStream.h>
+#include <debug.h>
 
 
+#ifdef USE_WIFI
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASS;
 
-#if USE_WIFI
 WiFiClient network;
 uint8_t status = WL_IDLE_STATUS;
 #else
+byte mac[] = {
+    0xA8, 0x61, 0x0A, 0xAE, 0x6C, 0x70
+};
+
 EthernetClient network;
+
+EthernetUDP ethernetUdp;
+NTPClient timeClient(ethernetUdp);
 #endif
 
-PubSubClient mqtt(network);
-
-Task th_run_mqtt_loop(100, [](Task *me) { mqtt.loop(); });
-
-void mqttClientConnect(Task *me);
-Task th_run_mqtt_reconnect_check(100, mqttClientConnect);
-
-void mqttCallback(char *topic, byte *payload, unsigned int length) {
-#ifndef DISABLE_SERIAL_DEBUG
-  Serial.print(topic);
-  Serial.print(" ");
-  for (unsigned int i = 0; i < length; ++i) {
-    Serial.print(payload[i]);
-  }
-  Serial.println();
+#ifndef USE_WIFI
+void sendNTPPacket(const char *address);
 #endif
 
-  if (strcmp(topic, MQTT_TOPIC_IN_STATUS) == 0) {
-    // TODO:
-  }
+Task task_check_network_connectivity(2000, [](Task *me) {
+  connectToNetwork();
+#ifndef USE_WIFI
+  timeClient.update();
+#endif
+});
+
+void printMacAddress(byte mac[]);
+
+unsigned long getTime() {
+#ifdef USE_WIFI
+  return WiFi.getTime();
+#else
+  return timeClient.getEpochTime();
+#endif
 }
 
-bool first_connect = true;
-
-void mqttClientConnect(Task *me) {
-  if (!mqtt.connected()) {
-    // Loop until we're reconnected
-    while (!mqtt.connected()) {
-      Serial.print("Attempting MQTT connection...");
-      // Attempt to connect
-      if (mqtt.connect("arduinoClient")) {
-        Serial.println("connected");
-        // Once connected, publish an announcement...
-        mqtt.publish("outTopic", "hello world");
-        // ... and resubscribe
-        mqtt.subscribe("inTopic");
-      } else {
-        Serial.print("failed, rc=");
-        Serial.print(mqtt.state());
-        Serial.println(" try again in 5 seconds");
-        // Wait 5 seconds before retrying
-        delay(5000);
-      }
-    }
+#ifdef USE_WIFI
+bool checkNetworkHardware() {
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    return false;
   }
+
+  String fv = WiFiClass::firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Please upgrade the firmware");
+  }
+
+  return true;
 }
 
-char buffer[350];
+void connectToNetwork() {
+  auto last_status = status;
+  // attempt to connect to Wifi network:
+  while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network:
+    status = WiFi.begin(ssid, pass);
 
-void printAndPublish(const String &topic, SenMLPack &pack) {
-#if !defined(DISABLE_SERIAL_DEBUG)
-  Serial.print(topic);
-  Serial.print(" ");
-  Serial.print(millis());
-  Serial.print(" ");
-#endif
-#if !defined(DISABLE_NET)
-  pack.toJson(buffer, 350);
-#endif
-#if !defined(DISABLE_SERIAL_DEBUG) && !defined(DISABLE_NET)
-  Serial.println(buffer);
-#elif defined(DISABLE_SERIAL_DEBUG) && !defined(DISABLE_NET)
-#elif !defined(DISABLE_SERIAL_DEBUG) && defined(DISABLE_NET)
-  pack.toJson(Serial);
-  Serial.println();
-#endif
-#ifndef DISABLE_NET
-  mqtt.publish(topic.c_str(), buffer);
-#endif
+    // wait 10 seconds for connection:
+    delay(10000);
+  }
+
+  if (last_status != status) {
+    // you're connected now, so print out the data:
+    Serial.print("Connected to SSID: ");
+    Serial.println(ssid);
+  }
 }
 
 void printWifiData() {
@@ -97,7 +89,7 @@ void printWifiData() {
   printMacAddress(mac);
 }
 
-void printCurrentNet() {
+void printCurrentWiFiNetwork() {
   // print the SSID of the network you're attached to:
   Serial.print("SSID: ");
   Serial.println(WiFi.SSID());
@@ -118,6 +110,54 @@ void printCurrentNet() {
   Serial.print("Encryption Type:");
   Serial.println(encryption, HEX);
   Serial.println();
+}
+
+#else
+
+bool checkNetworkHardware() {
+  return true;
+}
+
+void connectToNetwork() {
+  FUNC_IN
+  if (network.connected()) {
+    EthernetClass::maintain();
+
+    FUNC_OUT
+    return;
+  }
+
+  if (EthernetClass::begin(mac) == 0) {
+    Serial.println("Failed to configure Ethernet using DHCP");
+
+    if (EthernetClass::hardwareStatus() == EthernetNoHardware) {
+      Serial.println("Ethernet shield was not found.");
+      while (true);
+    }
+
+    while (EthernetClass::linkStatus() == LinkOFF) {
+      Serial.println("Ethernet cable is not connected");
+      delay(5000);
+    }
+  }
+
+  timeClient.begin();
+
+  FUNC_OUT
+}
+
+#endif
+
+void printNetworkInfo() {
+  FUNC_IN
+#ifdef USE_WIFI
+  printCurrentWiFiNetwork();
+  printWifiData();
+#else
+  // TODO:
+#endif
+
+  FUNC_OUT
 }
 
 void printMacAddress(byte mac[]) {
