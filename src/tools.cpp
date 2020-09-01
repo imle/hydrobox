@@ -1,26 +1,29 @@
 #include <tools.h>
+#include <pin_assignment.h>
 
 
 PCA9685 pwm_driver;
 
-Pump pump_flora_micro(&pwm_driver, 0, KAddressEEPROMDefault + 8 * 0);     // Top    | k=3950
-Pump pump_flora_gro(&pwm_driver, 1, KAddressEEPROMDefault + 8 * 2);       //        | k=3660
-Pump pump_flora_bloom(&pwm_driver, 2, KAddressEEPROMDefault + 8 * 4);     //        | k=3700
-Pump pump_ph_up_reservoir(&pwm_driver, 3, KAddressEEPROMDefault + 8 * 6); //        | k=3740
-Pump pump_ph_up_basin(&pwm_driver, 4, KAddressEEPROMDefault + 8 * 8);     //        | k=3730
-Pump pump_ph_down_basin(&pwm_driver, 5, KAddressEEPROMDefault + 8 * 12);  // Bottom | k=3750
+Pump pump_flora_micro(&pwm_driver, 0, 3950);     // Top    | k=3950
+Pump pump_flora_gro(&pwm_driver, 1, 3660);       //        | k=3660
+Pump pump_flora_bloom(&pwm_driver, 2, 3700);     //        | k=3700
+Pump pump_ph_up_reservoir(&pwm_driver, 3, 3740); //        | k=3740
+Pump pump_ph_up_basin(&pwm_driver, 4, 3730);     //        | k=3730
+Pump pump_ph_down_basin(&pwm_driver, 5, 3750);   // Bottom | k=3750
 
-Relay submersible_pump(A5, HIGH); // Left  | Plug BL | Water Pump
-Relay plant_lights(A4, HIGH);     //       | Plug TL | Plant Lights
-Relay air_mover(A3, HIGH);        //       | Plug BR | Air Mover
-Relay bubbler(A2, HIGH);          //       | Plug TR | Bubbler
-Relay r4(A1, HIGH);               //       |
-Relay r5(4, HIGH);                //       |
-Relay r6(2, HIGH);                //       |
-Relay r7(3, HIGH);                // Right |
+Relay submersible_pump(PIN_SUBMERSIBLE_PUMP, HIGH); // Left  | Plug BL | Water Pump
+Relay plant_lights(PIN_PLANT_LIGHTS, HIGH);         //       | Plug TL | Plant Lights
+Relay air_mover(PIN_AIR_MOVER, HIGH);               //       | Plug BR | Air Mover
+Relay bubbler(PIN_BUBBLER, HIGH);                   //       | Plug TR | Bubbler
+Relay r4(PIN_R4, HIGH);                             //       |
+Relay r5(PIN_R5, HIGH);                             //       |
+Relay r6(PIN_R6, HIGH);                             //       |
+Relay r7(PIN_R7, HIGH);                             // Right |
 
-Relay fan0(10, LOW);
-Relay fan1(11, LOW);
+Relay fan0(PIN_FAN0, LOW);
+Relay fan1(PIN_FAN1, LOW);
+
+Relay rail_valves(PIN_RAIL_VALVES, LOW);
 
 Task th_check_if_offables_should_off(50, checkIfToolsShouldOff);
 
@@ -43,6 +46,8 @@ void checkIfToolsShouldOff(Task *me) {
 
   fan0.checkShouldOff();
   fan1.checkShouldOff();
+
+  rail_valves.checkShouldOff();
 
 #if defined(BUTTON_TOGGLE_CALIBRATOR)
   if (button_pump != nullptr && !button_pump->isOn()) {

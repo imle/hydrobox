@@ -1,7 +1,7 @@
 #include <Relay.h>
 
 
-Relay::Relay(pin_size_t pin, PinStatus off_state) : pin(pin), off_state(off_state) {
+Relay::Relay(int pin, int off_state) : pin(pin), off_state(off_state) {
   pinMode(pin, OUTPUT);
   digitalWrite(pin, this->off_state);
 }

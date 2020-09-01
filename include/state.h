@@ -24,6 +24,8 @@ extern SenMLBoolRecord sml_r6;
 extern SenMLBoolRecord sml_r7;
 extern SenMLBoolRecord sml_fan0;
 extern SenMLBoolRecord sml_fan1;
+extern SenMLBoolRecord sml_rail_valves;
+extern SenMLBoolRecord sml_float_rails;
 extern SenMLBoolRecord sml_float_min;
 extern SenMLBoolRecord sml_float_max;
 

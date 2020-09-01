@@ -19,6 +19,7 @@ struct PhysicalStates {
   bool r7;
   bool fan0;
   bool fan1;
+  bool rail_valves;
   bool float_min;
   bool float_max;
 };

@@ -1,36 +1,11 @@
 #include <Pump.h>
-#include <EEPROM.h>
 
 
-Pump::Pump(pin_size_t pin) : pin(pin), k_address_eeprom(KAddressEEPROMDefault) {
+Pump::Pump(int pin, int k) : pin(pin), k(k) {
   pinMode(this->pin, OUTPUT);
-
-  uint8_t val;
-  EEPROM.get(this->k_address_eeprom, val);
-  this->k = val;
 }
 
-Pump::Pump(pin_size_t pin, int k_address_eeprom) : pin(pin), k_address_eeprom(k_address_eeprom) {
-  pinMode(this->pin, OUTPUT);
-
-  uint8_t val;
-  EEPROM.get(this->k_address_eeprom, val);
-  this->k = val;
-}
-
-Pump::Pump(PCA9685 *driver, pin_size_t pin)
-    : driver(driver), pin(pin), k_address_eeprom(KAddressEEPROMDefault) {
-  this->driver->getPin(this->pin).fullOffAndWrite();
-
-  EEPROM.get(this->k_address_eeprom, this->k);
-}
-
-Pump::Pump(PCA9685 *driver, pin_size_t pin, int k_address_eeprom)
-    : driver(driver), pin(pin), k_address_eeprom(k_address_eeprom) {
-  this->driver->getPin(this->pin).fullOffAndWrite();
-
-  EEPROM.get(this->k_address_eeprom, this->k);
-}
+Pump::Pump(PCA9685 *driver, int pin, int k): driver(driver), pin(pin), k(k) {}
 
 Pump::State Pump::on() {
   State state = this->state();
@@ -38,11 +13,8 @@ Pump::State Pump::on() {
     return state;
   }
 
-  Serial.println(this->k);
-
   this->is_on = true;
   if (this->driver != nullptr) {
-    Serial.println("driver");
     this->driver->getPin(this->pin).setValueAndWrite(this->k);
   } else {
     analogWrite(this->pin, (uint8_t) this->k);
@@ -116,29 +88,4 @@ void Pump::delayNextOn(unsigned long ms) {
 
 void Pump::cancelDelay() {
   this->delay_on = 0;
-}
-
-void Pump::beginCalibration() {
-  if (this->calibrating || this->locked_off) {
-    return;
-  }
-
-  this->calibrating = true;
-
-  this->on();
-  delay(1000);
-  this->off();
-}
-
-void Pump::setCalibrationKValue(uint16_t k) {
-  this->k = k;
-  if (this->driver != nullptr) {
-    EEPROM.put(this->k_address_eeprom, this->k);
-  } else {
-    EEPROM.put(this->k_address_eeprom, (uint8_t) this->k);
-  }
-}
-
-void Pump::endCalibration() {
-  this->calibrating = false;
 }

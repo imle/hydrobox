@@ -1,6 +1,8 @@
 #ifndef HPCC_MQTT_H
 #define HPCC_MQTT_H
 
+#define MQTT_SERVER "10.0.0.9"
+
 #define MQTT_TOPIC_PREFIX "hydrobox."
 #define MQTT_TOPIC_IN_PREFIX MQTT_TOPIC_PREFIX "in."
 #define MQTT_TOPIC_OUT_PREFIX MQTT_TOPIC_PREFIX "out."

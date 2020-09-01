@@ -1,5 +1,6 @@
 #include <df.h>
 #include <OneWire.h>
+#include <pin_assignment.h>
 
 
 OneWire ds(PIN_DS18S20);

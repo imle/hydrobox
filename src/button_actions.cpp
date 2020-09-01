@@ -1,11 +1,12 @@
 #include <button_actions.h>
+#include <pin_assignment.h>
 #include <dossing.h>
 
 
 Pump *button_pump = nullptr;
 bool thing_on = false;
 
-Debouncer button_debouncer(BUTTON_PIN, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
+Debouncer button_debouncer(PIN_BUTTON, MODE_OPEN_ON_PUSH, buttonPressed, buttonReleased);
 
 Relay *relays[] = {&submersible_pump, &plant_lights};
 

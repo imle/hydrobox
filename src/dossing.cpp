@@ -30,6 +30,7 @@ bool dossingFlushReservoirToBasin(Task *me) {
 
 bool dossingStopPhPump(Task *me) {
   Serial.println("  ph pumps off");
+  return true;
 }
 
 void dossingTriggerBalanceBasinPh(Task *me) {

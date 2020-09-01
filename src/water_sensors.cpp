@@ -3,8 +3,8 @@
 
 #include <network.h>
 #include <EzoBoard.h>
-#include <StringStream.h>
 #include <constants/mqtt.h>
+#include <pin_assignment.h>
 
 
 GravityTDS tds(PIN_TDS_SENSOR);
@@ -41,43 +41,30 @@ void requestWaterSensorReadings(Task *me) {
   SoftTimer.add(&th_receive_sensor_readings);
 }
 
-float printFailureOnSensor(EzoBoard &sensor) {
-  Serial.print(F("Failed reading sensor "));
+void printFailureOnSensor(EzoBoard &sensor) {
+  Serial.print("Failed reading sensor ");
   Serial.println(sensor.getName());
 }
 
+bool checkRequest(EzoBoard &board) {
+  if (board.isRequestPending()) {
+    EzoBoard::Error status = board.receiveReadCmd();
+    if (status == EzoBoard::FAIL) {
+      printFailureOnSensor(board);
+    }
+    return status != EzoBoard::NOT_READY;
+  }
+
+  return true;
+}
+
 void receiveAtlasSensorReadings(Task *me) {
-  EzoBoard::Error status;
   bool finished = true;
 
-  if (ezo_ph_basin.isRequestPending()) {
-    status = ezo_ph_basin.receiveReadCmd();
-    finished = status != EzoBoard::NOT_READY;
-    if (status == EzoBoard::FAIL) {
-      printFailureOnSensor(ezo_ph_basin);
-    }
-  }
-  if (ezo_temp_basin.isRequestPending()) {
-    status = ezo_temp_basin.receiveReadCmd();
-    finished = status != EzoBoard::NOT_READY;
-    if (status == EzoBoard::FAIL) {
-      printFailureOnSensor(ezo_temp_basin);
-    }
-  }
-  if (ezo_ec_basin.isRequestPending()) {
-    status = ezo_ec_basin.receiveReadCmd();
-    finished = status != EzoBoard::NOT_READY;
-    if (status == EzoBoard::FAIL) {
-      printFailureOnSensor(ezo_ec_basin);
-    }
-  }
-  if (ezo_ph_reservoir.isRequestPending()) {
-    status = ezo_ph_reservoir.receiveReadCmd();
-    finished = status != EzoBoard::NOT_READY;
-    if (status == EzoBoard::FAIL) {
-      printFailureOnSensor(ezo_ph_reservoir);
-    }
-  }
+  finished &= checkRequest(ezo_ph_basin);
+  finished &= checkRequest(ezo_temp_basin);
+  finished &= checkRequest(ezo_ec_basin);
+  finished &= checkRequest(ezo_ph_reservoir);
 
   if (finished) {
     SoftTimer.remove(&th_receive_sensor_readings);
@@ -85,29 +72,25 @@ void receiveAtlasSensorReadings(Task *me) {
   }
 }
 
+void addIfNotError(EzoBoard &board, SenMLFloatRecord &record) {
+  if (board.getError() == EzoBoard::SUCCESS) {
+    sensors.add(record);
+    record.set(board.getLastReceivedReading());
+  }
+}
+
 bool createAndSendWaterSensorsMessage(Task *me) {
   sensors.clear();
 
-  if (ezo_ph_basin.getError() == EzoBoard::SUCCESS) {
-    sensors.add(sensors_ph_basin);
-    sensors_ph_basin.set(ezo_ph_basin.getLastReceivedReading());
-  }
-  if (ezo_temp_basin.getError() == EzoBoard::SUCCESS) {
-    sensors.add(sensors_temp_basin);
-    sensors_temp_basin.set(ezo_temp_basin.getLastReceivedReading());
-  }
-  if (ezo_ph_reservoir.getError() == EzoBoard::SUCCESS) {
-    sensors.add(sensors_ph_reservoir);
-    sensors_ph_reservoir.set(ezo_ph_reservoir.getLastReceivedReading());
-  }
-  if (ezo_ec_basin.getError() == EzoBoard::SUCCESS) {
-    sensors.add(sensors_ec_basin);
-    sensors_ec_basin.set(ezo_ec_basin.getLastReceivedReading());
-  }
+  addIfNotError(ezo_ph_basin, sensors_ph_basin);
+  addIfNotError(ezo_temp_basin, sensors_temp_basin);
+  addIfNotError(ezo_ph_reservoir, sensors_ph_reservoir);
+  addIfNotError(ezo_ec_basin, sensors_ec_basin);
 
   float res_temp = getReservoirTemp();
   sensors.add(sensors_temp_reservoir);
   sensors_temp_reservoir.set(res_temp);
+
   tds.setTemperature(res_temp);
   sensors.add(sensors_ec_reservoir);
   sensors_ec_reservoir.set(tds.getEcValue());
@@ -115,17 +98,6 @@ bool createAndSendWaterSensorsMessage(Task *me) {
   // Necessary for the ec meter
   basin_last_temperature = sensors_temp_basin.get();
 
-#if !defined(DISABLE_SERIAL_DEBUG) || !defined(DISABLE_NET)
-  StringStream sml_string_stream;
-  sensors.toJson(sml_string_stream);
-#endif
-#ifndef DISABLE_SERIAL_DEBUG
-  Serial.print(MQTT_TOPIC_OUT_BASIN " ");
-  Serial.print(millis());
-  Serial.print(" ");
-  Serial.println(sml_string_stream.str());
-#endif
-#ifndef DISABLE_NET
-  mqtt.publish(MQTT_TOPIC_OUT_BASIN, sml_string_stream.str().c_str());
-#endif
+  printAndPublish(MQTT_TOPIC_OUT_BASIN, sensors);
+  return true;
 }

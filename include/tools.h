@@ -28,6 +28,8 @@ extern Relay r7;               // Right |
 extern Relay fan0;
 extern Relay fan1;
 
+extern Relay rail_valves;
+
 // Ensures all relays and pumps are off if their async-time-on has been exceeded
 void checkIfToolsShouldOff(Task *me);
 extern Task th_check_if_offables_should_off;

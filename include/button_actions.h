@@ -14,7 +14,6 @@
 extern Pump *button_pump;
 extern bool thing_on;
 
-#define BUTTON_PIN 5
 extern Debouncer button_debouncer;
 
 void buttonPressed();

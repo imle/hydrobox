@@ -14,16 +14,15 @@
  All above must be included in any redistribution.
  ****************************************************/
 
-#include <EEPROM.h>
+//#include <EEPROM.h>
 #include "GravityTDS.h"
 
 
-//float EEkValue = 1.0;
-
-#define EEPROM_write(address, p) {int i = 0; byte *pp = (byte*)&(p);for(; i < sizeof(p); i++) EEPROM.write(address+i, pp[i]);}
-#define EEPROM_read(address, p)  {int i = 0; byte *pp = (byte*)&(p);for(; i < sizeof(p); i++) pp[i]=EEPROM.read(address+i);}
-//#define EEPROM_write(address, p) {EEkValue = p;}
-//#define EEPROM_read(address, p)  {p = EEkValue;}
+float EEkValue = 1.0;
+//#define EEPROM_write(address, p) {int i = 0; byte *pp = (byte*)&(p);for(; i < sizeof(p); i++) EEPROM.write(address+i, pp[i]);}
+//#define EEPROM_read(address, p)  {int i = 0; byte *pp = (byte*)&(p);for(; i < sizeof(p); i++) pp[i]=EEPROM.read(address+i);}
+#define EEPROM_write(address, p) {EEkValue = p;}
+#define EEPROM_read(address, p)  {p = EEkValue;}
 
 GravityTDS::GravityTDS() {
   this->pin = A1;
